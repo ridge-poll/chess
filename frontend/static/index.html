@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chess Analytics</title>
+    <meta name="theme-color" content="#156f64" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Chess Analytics" />
+    <script>
+      const savedTheme = localStorage.getItem("theme");
+      const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
+    </script>
+    <link rel="manifest" href="/static/manifest.webmanifest?v=13" />
+    <link rel="icon" href="/static/icon.svg?v=13" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css?v=13" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Chess Analytics</p>
+          <h1>Performance</h1>
+        </div>
+        <div class="top-actions">
+          <label class="profile-select-label">
+            <span>Profile</span>
+            <select id="profileSelect" aria-label="Active profile"></select>
+          </label>
+          <button class="icon-button" id="themeToggleButton" aria-label="Toggle dark mode">◐</button>
+          <button class="icon-button" id="createProfileButton" aria-label="Create profile">+</button>
+          <button class="icon-button" id="refreshButton" aria-label="Refresh">R</button>
+        </div>
+      </header>
+
+      <main>
+        <section id="status" class="status" hidden></section>
+
+        <nav class="tabs" aria-label="Views">
+          <button class="tab active" data-view="dashboard">Overview</button>
+          <button class="tab" data-view="import">Import</button>
+          <button class="tab" data-view="openings">Openings</button>
+          <button class="tab" data-view="games">Games</button>
+        </nav>
+
+        <section class="view active" id="dashboardView">
+          <div class="metrics-grid" id="metricsGrid"></div>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Statistics</h2>
+            </div>
+            <div class="segmented-control" id="statsTimeControl">
+              <button class="segment active" data-stats-time="Overall">Overall</button>
+              <button class="segment" data-stats-time="Bullet">Bullet</button>
+              <button class="segment" data-stats-time="Blitz">Blitz</button>
+              <button class="segment" data-stats-time="Rapid">Rapid</button>
+              <button class="segment" data-stats-time="Classical">Classical</button>
+            </div>
+            <div class="metrics-grid compact-metrics" id="timeStatsGrid"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Coach Notes</h2>
+            </div>
+            <div id="insightList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Trend</h2>
+            </div>
+            <div class="chart" id="trendChart"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Rating</h2>
+            </div>
+            <div class="chart rating-chart" id="ratingChart"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Game Phases</h2>
+            </div>
+            <div id="phaseList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Mistakes</h2>
+            </div>
+            <div id="mistakeList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Openings</h2>
+            </div>
+            <div id="openingList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Opening Edges</h2>
+            </div>
+            <div id="openingEdgeList" class="stack"></div>
+          </section>
+        </section>
+
+        <section class="view" id="importView">
+          <section class="panel import-panel">
+            <h2>Import PGN</h2>
+            <div class="active-profile-note" id="activeImportProfile">Profile: -</div>
+            <input id="fileInput" type="file" accept=".pgn,text/plain" multiple />
+            <textarea id="pgnInput" rows="10" placeholder="Paste one or more PGNs"></textarea>
+            <button class="primary" id="importButton">Import Games</button>
+          </section>
+          <section class="panel import-panel">
+            <h2>Chess.com Sync</h2>
+            <input id="chesscomUsername" type="text" autocomplete="username" placeholder="Chess.com username" />
+            <div class="sync-options">
+              <label>
+                <span>Months</span>
+                <input id="syncLimit" type="number" min="1" max="240" value="3" />
+              </label>
+              <label class="checkbox-row">
+                <input id="syncForce" type="checkbox" />
+                <span>Force re-sync</span>
+              </label>
+            </div>
+            <button class="primary" id="syncButton">Sync Archives</button>
+            <div id="syncHistory" class="stack"></div>
+          </section>
+        </section>
+
+        <section class="view" id="gamesView">
+          <section class="panel filter-panel">
+            <div class="panel-heading">
+              <h2>Filter</h2>
+            </div>
+            <div class="filter-grid">
+              <label>
+                <span>Search</span>
+                <input id="searchInput" type="search" placeholder="Player or opening" />
+              </label>
+              <label>
+                <span>Time Control</span>
+                <select id="timeFilterSelect" aria-label="Filter by time control">
+                  <option value="all">All games</option>
+                  <option value="Bullet">Bullet</option>
+                  <option value="Blitz">Blitz</option>
+                  <option value="Rapid">Rapid</option>
+                  <option value="Classical">Classical</option>
+                </select>
+              </label>
+              <label>
+                <span>Sort By</span>
+                <select id="sortSelect" aria-label="Sort games">
+                  <option value="recent">Most Recent</option>
+                  <option value="accuracy_desc">Highest Accuracy</option>
+                  <option value="accuracy_asc">Lowest Accuracy</option>
+                  <option value="longest">Longest Game</option>
+                  <option value="shortest">Shortest Game</option>
+                  <option value="time_class">Time Control</option>
+                </select>
+              </label>
+              <label>
+                <span>Depth</span>
+                <input id="depthInput" class="depth-input" type="number" min="1" max="30" value="10" aria-label="Analysis depth" />
+              </label>
+            </div>
+            <button id="analyzeAllButton" class="primary">Analyze Filtered Games</button>
+          </section>
+          <section class="panel compact-panel">
+            <div class="panel-heading">
+              <h2>Analysis Queue</h2>
+              <span class="pill" id="queueSummary">Idle</span>
+            </div>
+            <div id="jobList" class="stack"></div>
+          </section>
+          <div id="gameList" class="game-list"></div>
+        </section>
+
+        <section class="view" id="openingsView">
+          <section class="panel filter-panel">
+            <div class="panel-heading">
+              <h2>Openings</h2>
+            </div>
+            <label class="full-label">
+              <span>Sort By</span>
+              <select id="openingSortSelect" aria-label="Sort openings">
+                <option value="most_played">Most Played</option>
+                <option value="highest_win_rate">Highest Win Rate</option>
+                <option value="highest_accuracy">Highest Accuracy</option>
+                <option value="lowest_accuracy">Lowest Accuracy</option>
+              </select>
+            </label>
+          </section>
+          <div id="openingStatsList" class="opening-stats-list"></div>
+        </section>
+
+        <section class="view" id="detailView">
+          <button class="text-button" id="backToGames">&lt; Games</button>
+          <div id="gameDetail"></div>
+        </section>
+      </main>
+    </div>
+    <div class="modal-backdrop" id="confirmModal" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <h2 id="confirmTitle">Delete game?</h2>
+        <p id="confirmBody">This removes the game and its analysis from memory.</p>
+        <div class="modal-actions">
+          <button id="cancelDeleteButton">Cancel</button>
+          <button class="danger-button" id="confirmDeleteButton">Delete</button>
+        </div>
+      </section>
+    </div>
+    <div class="modal-backdrop" id="profileModal" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+        <h2 id="profileTitle">Create profile</h2>
+        <input id="newProfileName" type="text" placeholder="Profile name" />
+        <div class="modal-actions">
+          <button id="cancelProfileButton">Cancel</button>
+          <button class="primary" id="saveProfileButton">Create</button>
+        </div>
+      </section>
+    </div>
+    <script src="/static/app.js?v=13" type="module"></script>
+  </body>
+</html>

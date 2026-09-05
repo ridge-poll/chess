@@ -1,0 +1,18 @@
+{
+  "name": "Chess Analytics",
+  "short_name": "Chess",
+  "description": "Mobile-first chess improvement tracking with Stockfish analysis.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f7f8",
+  "theme_color": "#156f64",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

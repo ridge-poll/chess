@@ -1,0 +1,1 @@
+"""Chess analytics backend."""
