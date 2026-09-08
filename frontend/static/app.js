@@ -18,6 +18,9 @@ const state = {
   selectedPly: null,
   selectedPositions: [],
   startingFen: null,
+  boardOrientations: {
+    gameExplorer: "white",
+  },
   pollTimer: null,
   pendingDeleteGameId: null,
 };
@@ -639,42 +642,17 @@ function renderEvaluationGraph(history, summary, game = {}) {
 }
 
 function renderBoardExplorer(moves, startingFen) {
-  return `
-    <section class="panel board-panel">
-      <div class="panel-heading">
-        <h2>Explorer</h2>
-        <span class="pill" id="boardMoveIndicator">${startingFen ? "Ready" : "No board"}</span>
-      </div>
-      <div class="board-layout">
-        <div class="chessboard-wrap">
-          <div class="board-rank-labels" aria-hidden="true">
-            ${[8, 7, 6, 5, 4, 3, 2, 1].map((rank) => `<span>${rank}</span>`).join("")}
-          </div>
-          <div class="chessboard" id="chessboard" aria-label="Chess board"></div>
-          <div class="board-file-labels" aria-hidden="true">
-            ${["a", "b", "c", "d", "e", "f", "g", "h"].map((file) => `<span>${file}</span>`).join("")}
-          </div>
-        </div>
-        <div class="explorer-side">
-          <div class="explorer-current" id="boardCurrentMove">Select a move to inspect the position.</div>
-          <div class="explorer-controls" aria-label="Board navigation">
-            <button class="nav-button" data-board-nav="start" title="Jump to beginning" aria-label="Jump to beginning">|&lt;</button>
-            <button class="nav-button" data-board-nav="prev" title="Previous move" aria-label="Previous move">&lt;</button>
-            <button class="nav-button" data-board-nav="next" title="Next move" aria-label="Next move">&gt;</button>
-            <button class="nav-button" data-board-nav="end" title="Jump to end" aria-label="Jump to end">&gt;|</button>
-          </div>
-          <div class="move-strip" aria-label="Move timeline">
-            <button class="move-chip start" data-explorer-ply="0">Start</button>
-            ${moves.map((move) => `
-              <button class="move-chip ${escapeHtml(move.side || move.color || "")}" data-explorer-ply="${move.ply}">
-                <span>${escapeHtml(moveLabel(move))}</span>
-              </button>
-            `).join("")}
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
+  return renderBoardComponent({
+    id: "gameExplorer",
+    mode: "game",
+    title: "Explorer",
+    startingFen,
+    positions: moves,
+    selectedPly: state.selectedPly,
+    orientation: state.boardOrientations.gameExplorer,
+    emptyText: "Select a move to inspect the position.",
+    includeTimeline: true,
+  });
 }
 
 function bindAnalysisDetailInteractions() {
@@ -726,26 +704,22 @@ function updateSelectedPly() {
 }
 
 function updateExplorerBoard(selected) {
-  const board = document.querySelector("#chessboard");
-  if (!board) return;
   const fen = selected?.fen || selected?.fen_after || state.startingFen || state.selectedPositions[0]?.fen_before;
-  board.innerHTML = renderBoardSquares(fen);
-
-  const maxPly = Math.max(0, ...state.selectedPositions.map((move) => Number(move.ply) || 0));
-  const currentPly = Number(state.selectedPly) || 0;
-  document.querySelectorAll("[data-board-nav]").forEach((button) => {
-    const nav = button.dataset.boardNav;
-    const atStart = currentPly <= 0;
-    const atEnd = currentPly >= maxPly;
-    button.disabled = (nav === "start" || nav === "prev") ? atStart : atEnd;
+  updateBoardComponent({
+    id: "gameExplorer",
+    fen,
+    selected,
+    positions: state.selectedPositions,
+    selectedPly: state.selectedPly,
+    orientation: state.boardOrientations.gameExplorer,
   });
 
-  const indicator = document.querySelector("#boardMoveIndicator");
+  const indicator = document.querySelector('[data-board-indicator="gameExplorer"]');
   if (indicator) {
     indicator.textContent = selected ? moveLabel(selected) : "Start";
   }
 
-  const current = document.querySelector("#boardCurrentMove");
+  const current = document.querySelector('[data-board-current="gameExplorer"]');
   if (!current) return;
   if (!selected) {
     current.innerHTML = `
@@ -764,6 +738,70 @@ function updateExplorerBoard(selected) {
   `;
 }
 
+function renderBoardComponent(config) {
+  const orientation = config.orientation || "white";
+  const positions = config.positions || [];
+  return `
+    <section class="panel board-panel" data-board-component="${escapeHtml(config.id)}" data-board-mode="${escapeHtml(config.mode || "game")}">
+      <div class="panel-heading">
+        <h2>${escapeHtml(config.title || "Board")}</h2>
+        <span class="pill" data-board-indicator="${escapeHtml(config.id)}">${config.startingFen ? "Ready" : "No board"}</span>
+      </div>
+      <div class="board-layout">
+        <div class="chessboard-wrap" data-board-orientation="${escapeHtml(orientation)}">
+          <div class="board-rank-labels" data-board-ranks="${escapeHtml(config.id)}" aria-hidden="true">
+            ${renderRankLabels(orientation)}
+          </div>
+          <div class="chessboard" id="chessboard-${escapeHtml(config.id)}" data-board-surface="${escapeHtml(config.id)}" aria-label="Chess board"></div>
+          <div class="board-file-labels" data-board-files="${escapeHtml(config.id)}" aria-hidden="true">
+            ${renderFileLabels(orientation)}
+          </div>
+        </div>
+        <div class="explorer-side">
+          <div class="explorer-current" data-board-current="${escapeHtml(config.id)}">${escapeHtml(config.emptyText || "Select a move.")}</div>
+          <div class="explorer-controls" aria-label="Board navigation">
+            <button class="nav-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="start" title="Jump to beginning" aria-label="Jump to beginning">|&lt;</button>
+            <button class="nav-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="prev" title="Previous move" aria-label="Previous move">&lt;</button>
+            <button class="nav-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next move" aria-label="Next move">&gt;</button>
+            <button class="nav-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="end" title="Jump to end" aria-label="Jump to end">&gt;|</button>
+          </div>
+          ${config.includeTimeline ? `
+            <div class="move-strip" aria-label="Move timeline">
+              <button class="move-chip start" data-explorer-ply="0">Start</button>
+              ${positions.map((move) => `
+                <button class="move-chip ${escapeHtml(move.side || move.color || "")}" data-explorer-ply="${move.ply}">
+                  <span>${escapeHtml(moveLabel(move))}</span>
+                </button>
+              `).join("")}
+            </div>
+          ` : ""}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function updateBoardComponent(config) {
+  const board = document.querySelector(`[data-board-surface="${config.id}"]`);
+  if (!board) return;
+  const orientation = config.orientation || "white";
+  board.innerHTML = renderBoardSquares(config.fen, orientation);
+
+  const ranks = document.querySelector(`[data-board-ranks="${config.id}"]`);
+  if (ranks) ranks.innerHTML = renderRankLabels(orientation);
+  const files = document.querySelector(`[data-board-files="${config.id}"]`);
+  if (files) files.innerHTML = renderFileLabels(orientation);
+
+  const maxPly = Math.max(0, ...(config.positions || []).map((move) => Number(move.ply) || 0));
+  const currentPly = Number(config.selectedPly) || 0;
+  document.querySelectorAll(`[data-board-id="${config.id}"][data-board-nav]`).forEach((button) => {
+    const nav = button.dataset.boardNav;
+    const atStart = currentPly <= 0;
+    const atEnd = currentPly >= maxPly;
+    button.disabled = (nav === "start" || nav === "prev") ? atStart : atEnd;
+  });
+}
+
 function nextExplorerPly(action) {
   const maxPly = Math.max(0, ...state.selectedPositions.map((move) => Number(move.ply) || 0));
   const current = Number(state.selectedPly) || 0;
@@ -774,7 +812,7 @@ function nextExplorerPly(action) {
   return current;
 }
 
-function renderBoardSquares(fen) {
+function renderBoardSquares(fen, orientation = "white") {
   if (!fen) {
     return `<div class="board-empty">No FEN available</div>`;
   }
@@ -783,11 +821,7 @@ function renderBoardSquares(fen) {
   if (rows.length !== 8) {
     return `<div class="board-empty">Invalid board position</div>`;
   }
-  const pieces = {
-    p: "♟", r: "♜", n: "♞", b: "♝", q: "♛", k: "♚",
-    P: "♙", R: "♖", N: "♘", B: "♗", Q: "♕", K: "♔",
-  };
-  return rows.map((row, rankIndex) => {
+  const parsedRows = rows.map((row) => {
     const squares = [];
     for (const token of row) {
       const empty = Number(token);
@@ -796,19 +830,55 @@ function renderBoardSquares(fen) {
           squares.push("");
         }
       } else {
-        squares.push(pieces[token] || "");
+        squares.push(token);
       }
     }
-    return squares.slice(0, 8).map((piece, fileIndex) => {
+    return squares.slice(0, 8);
+  });
+  const orientedRows = orientation === "black"
+    ? parsedRows.slice().reverse().map((row) => row.slice().reverse())
+    : parsedRows;
+  return orientedRows.map((row, rankIndex) => {
+    return row.map((piece, fileIndex) => {
       const isLight = (rankIndex + fileIndex) % 2 === 0;
-      const color = piece && ["♙", "♖", "♘", "♗", "♕", "♔"].includes(piece) ? "white-piece" : "black-piece";
       return `
         <div class="board-square ${isLight ? "light" : "dark"}">
-          ${piece ? `<span class="piece ${color}">${piece}</span>` : ""}
+          ${piece ? renderPieceSvg(piece) : ""}
         </div>
       `;
     }).join("");
   }).join("");
+}
+
+function renderRankLabels(orientation = "white") {
+  const ranks = orientation === "black" ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1];
+  return ranks.map((rank) => `<span>${rank}</span>`).join("");
+}
+
+function renderFileLabels(orientation = "white") {
+  const files = orientation === "black" ? ["h", "g", "f", "e", "d", "c", "b", "a"] : ["a", "b", "c", "d", "e", "f", "g", "h"];
+  return files.map((file) => `<span>${file}</span>`).join("");
+}
+
+function renderPieceSvg(piece) {
+  const white = piece === piece.toUpperCase();
+  const type = piece.toLowerCase();
+  const title = `${white ? "White" : "Black"} ${pieceName(type)}`;
+  const src = `/static/pieces/cburnett/${white ? "w" : "b"}${type}.svg`;
+  return `
+    <img class="piece piece-svg ${white ? "white-piece" : "black-piece"}" src="${src}" alt="${title}" draggable="false" />
+  `;
+}
+
+function pieceName(type) {
+  return {
+    k: "king",
+    q: "queen",
+    r: "rook",
+    b: "bishop",
+    n: "knight",
+    p: "pawn",
+  }[type] || "piece";
 }
 
 function defaultSelectedPly(moves) {

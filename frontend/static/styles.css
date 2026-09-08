@@ -24,8 +24,6 @@
   --eval-opponent-bg: #f1f1f1;
   --eval-area: rgba(118, 150, 87, 0.24);
   --eval-line: #5c8d43;
-  --piece-white: #f7f7f2;
-  --piece-black: #303030;
   --danger-border: #efb5ae;
   --warn-border: #e7c891;
   --modal-scrim: rgba(23, 32, 38, 0.45);
@@ -56,8 +54,6 @@
   --eval-opponent-bg: #252321;
   --eval-area: rgba(129, 182, 76, 0.22);
   --eval-line: #a3d160;
-  --piece-white: #f1f0e8;
-  --piece-black: #242424;
   --danger-border: #815149;
   --warn-border: #7f6742;
   --modal-scrim: rgba(0, 0, 0, 0.62);
@@ -171,9 +167,15 @@ h2 {
 }
 
 .icon-button {
+  display: inline-grid;
+  place-items: center;
   width: 44px;
   height: 44px;
   font-weight: 800;
+}
+
+.icon-button svg {
+  display: block;
 }
 
 .tabs {
@@ -729,20 +731,21 @@ input[type="number"] {
 }
 
 .piece {
-  color: var(--piece-black);
-  font-size: clamp(1.45rem, 8.5vw, 3rem);
-  font-weight: 500;
-  line-height: 1;
-  text-shadow: none;
+  display: block;
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.14));
+  pointer-events: none;
+  user-select: none;
 }
 
 .piece.black-piece {
-  color: var(--piece-black);
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.16));
 }
 
 .piece.white-piece {
-  color: var(--piece-white);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.14);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.26));
 }
 
 .board-empty {

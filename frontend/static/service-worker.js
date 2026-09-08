@@ -1,10 +1,22 @@
-const CACHE_NAME = "chess-analytics-v13";
+const CACHE_NAME = "chess-analytics-v16";
 const APP_SHELL = [
   "/",
-  "/static/styles.css?v=13",
-  "/static/app.js?v=13",
-  "/static/manifest.webmanifest?v=13",
-  "/static/icon.svg?v=13"
+  "/static/styles.css?v=16",
+  "/static/app.js?v=16",
+  "/static/manifest.webmanifest?v=16",
+  "/static/icon.svg?v=16",
+  "/static/pieces/cburnett/wk.svg",
+  "/static/pieces/cburnett/wq.svg",
+  "/static/pieces/cburnett/wr.svg",
+  "/static/pieces/cburnett/wb.svg",
+  "/static/pieces/cburnett/wn.svg",
+  "/static/pieces/cburnett/wp.svg",
+  "/static/pieces/cburnett/bk.svg",
+  "/static/pieces/cburnett/bq.svg",
+  "/static/pieces/cburnett/br.svg",
+  "/static/pieces/cburnett/bb.svg",
+  "/static/pieces/cburnett/bn.svg",
+  "/static/pieces/cburnett/bp.svg"
 ];
 
 self.addEventListener("install", (event) => {

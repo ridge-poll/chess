@@ -105,3 +105,4 @@ pytest
 - Without Stockfish installed, import and dashboard features still work; analysis endpoints return a clear error.
 - SQLite data is stored at `backend/data/chess_analytics.sqlite3` by default.
 - Override with `CHESS_ANALYTICS_DB=/path/to/file.sqlite3`.
+- Chess piece SVGs in `frontend/static/pieces/cburnett/` are the Cburnett Staunton chess set from Wikimedia Commons, used under the available open-license terms including BSD/GFDL/GPL/CC BY-SA options.
