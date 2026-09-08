@@ -1,10 +1,10 @@
-const CACHE_NAME = "chess-analytics-v16";
+const CACHE_NAME = "chess-analytics-v17";
 const APP_SHELL = [
   "/",
-  "/static/styles.css?v=16",
-  "/static/app.js?v=16",
-  "/static/manifest.webmanifest?v=16",
-  "/static/icon.svg?v=16",
+  "/static/styles.css?v=17",
+  "/static/app.js?v=17",
+  "/static/manifest.webmanifest?v=17",
+  "/static/icon.svg?v=17",
   "/static/pieces/cburnett/wk.svg",
   "/static/pieces/cburnett/wq.svg",
   "/static/pieces/cburnett/wr.svg",

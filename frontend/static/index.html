@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=16" />
-    <link rel="icon" href="/static/icon.svg?v=16" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=16" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=17" />
+    <link rel="icon" href="/static/icon.svg?v=17" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css?v=17" />
   </head>
   <body>
     <div id="app">
@@ -49,6 +49,7 @@
           <button class="tab" data-view="import">Import</button>
           <button class="tab" data-view="openings">Openings</button>
           <button class="tab" data-view="games">Games</button>
+          <button class="tab" data-view="analysis">Analysis</button>
         </nav>
 
         <section class="view active" id="dashboardView">
@@ -172,7 +173,10 @@
                 <input id="depthInput" class="depth-input" type="number" min="1" max="30" value="10" aria-label="Analysis depth" />
               </label>
             </div>
-            <button id="analyzeAllButton" class="primary">Analyze Filtered Games</button>
+            <div class="filter-actions">
+              <button id="newAnalysisButton" class="secondary-button">Analysis Board</button>
+              <button id="analyzeAllButton" class="primary">Analyze Filtered Games</button>
+            </div>
           </section>
           <section class="panel compact-panel">
             <div class="panel-heading">
@@ -206,6 +210,13 @@
           <button class="text-button" id="backToGames">&lt; Games</button>
           <div id="gameDetail"></div>
         </section>
+
+        <section class="view" id="analysisView">
+          <div class="analysis-toolbar">
+            <button class="text-button" id="backFromAnalysis" hidden>&lt; Game</button>
+          </div>
+          <div id="analysisBoardMount"></div>
+        </section>
       </main>
     </div>
     <div class="modal-backdrop" id="confirmModal" hidden>
@@ -228,6 +239,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=16" type="module"></script>
+    <script src="/static/app.js?v=17" type="module"></script>
   </body>
 </html>

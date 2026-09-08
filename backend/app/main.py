@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.analysis import router as analysis_router
+from app.api.board import router as board_router
 from app.api.chesscom import router as chesscom_router
 from app.api.dashboard import router as dashboard_router
 from app.api.games import router as games_router
@@ -39,6 +40,7 @@ app.add_middleware(
 
 app.include_router(imports_router)
 app.include_router(analysis_router)
+app.include_router(board_router)
 app.include_router(chesscom_router)
 app.include_router(games_router)
 app.include_router(openings_router)

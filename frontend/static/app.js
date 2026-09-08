@@ -1,3 +1,5 @@
+const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
 const state = {
   dashboard: null,
   games: [],
@@ -20,7 +22,9 @@ const state = {
   startingFen: null,
   boardOrientations: {
     gameExplorer: "white",
+    analysisBoard: "white",
   },
+  analysisBoard: null,
   pollTimer: null,
   pendingDeleteGameId: null,
 };
@@ -42,6 +46,7 @@ const els = {
     import: document.querySelector("#importView"),
     openings: document.querySelector("#openingsView"),
     games: document.querySelector("#gamesView"),
+    analysis: document.querySelector("#analysisView"),
     detail: document.querySelector("#detailView"),
   },
   metricsGrid: document.querySelector("#metricsGrid"),
@@ -69,11 +74,14 @@ const els = {
   timeFilterSelect: document.querySelector("#timeFilterSelect"),
   sortSelect: document.querySelector("#sortSelect"),
   analyzeAllButton: document.querySelector("#analyzeAllButton"),
+  newAnalysisButton: document.querySelector("#newAnalysisButton"),
   depthInput: document.querySelector("#depthInput"),
   queueSummary: document.querySelector("#queueSummary"),
   jobList: document.querySelector("#jobList"),
   backToGames: document.querySelector("#backToGames"),
+  backFromAnalysis: document.querySelector("#backFromAnalysis"),
   gameDetail: document.querySelector("#gameDetail"),
+  analysisBoardMount: document.querySelector("#analysisBoardMount"),
   confirmModal: document.querySelector("#confirmModal"),
   confirmBody: document.querySelector("#confirmBody"),
   cancelDeleteButton: document.querySelector("#cancelDeleteButton"),
@@ -492,6 +500,7 @@ async function renderGameDetail(gameId) {
       <div class="stat-subtitle">${escapeHtml(game.played_at || "Unknown date")} · ${escapeHtml(game.result || "*")}</div>
       <div class="stat-subtitle">${escapeHtml(game.opening || game.eco || "Unknown opening")}</div>
       <div class="detail-actions">
+        <button class="secondary-button" id="analysisGameButton">Analysis Board</button>
         <button class="primary" id="analyzeGameButton">Analyze Game</button>
         <button class="danger-button" id="deleteGameButton">Delete Game</button>
       </div>
@@ -527,6 +536,9 @@ async function renderGameDetail(gameId) {
     } catch (error) {
       showStatus(error.message, 8000);
     }
+  });
+  document.querySelector("#analysisGameButton").addEventListener("click", async () => {
+    await openGameAnalysisBoard(gameId);
   });
   document.querySelector("#deleteGameButton").addEventListener("click", async () => {
     await deleteGame(gameId);
@@ -665,7 +677,7 @@ function bindAnalysisDetailInteractions() {
       }
     });
   });
-  document.querySelectorAll("[data-board-nav]").forEach((button) => {
+  document.querySelectorAll('[data-board-id="gameExplorer"][data-board-nav]').forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedPly = nextExplorerPly(button.dataset.boardNav);
       updateSelectedPly();
@@ -741,6 +753,7 @@ function updateExplorerBoard(selected) {
 function renderBoardComponent(config) {
   const orientation = config.orientation || "white";
   const positions = config.positions || [];
+  const timelineAttribute = config.timelineAttribute || "data-explorer-ply";
   return `
     <section class="panel board-panel" data-board-component="${escapeHtml(config.id)}" data-board-mode="${escapeHtml(config.mode || "game")}">
       <div class="panel-heading">
@@ -765,11 +778,18 @@ function renderBoardComponent(config) {
             <button class="nav-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next move" aria-label="Next move">&gt;</button>
             <button class="nav-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="end" title="Jump to end" aria-label="Jump to end">&gt;|</button>
           </div>
+          ${config.includeBoardActions ? `
+            <div class="board-extra-controls">
+              <button class="secondary-button" data-board-id="${escapeHtml(config.id)}" data-board-action="reset">Reset</button>
+              <button class="secondary-button" data-board-id="${escapeHtml(config.id)}" data-board-action="flip">Flip</button>
+            </div>
+          ` : ""}
+          ${config.statusHtml || ""}
           ${config.includeTimeline ? `
             <div class="move-strip" aria-label="Move timeline">
-              <button class="move-chip start" data-explorer-ply="0">Start</button>
+              <button class="move-chip start" ${timelineAttribute}="0">Start</button>
               ${positions.map((move) => `
-                <button class="move-chip ${escapeHtml(move.side || move.color || "")}" data-explorer-ply="${move.ply}">
+                <button class="move-chip ${escapeHtml(move.side || move.color || "")}" ${timelineAttribute}="${move.ply}">
                   <span>${escapeHtml(moveLabel(move))}</span>
                 </button>
               `).join("")}
@@ -785,7 +805,7 @@ function updateBoardComponent(config) {
   const board = document.querySelector(`[data-board-surface="${config.id}"]`);
   if (!board) return;
   const orientation = config.orientation || "white";
-  board.innerHTML = renderBoardSquares(config.fen, orientation);
+  board.innerHTML = renderBoardSquares(config.fen, orientation, Boolean(config.allowInteraction));
 
   const ranks = document.querySelector(`[data-board-ranks="${config.id}"]`);
   if (ranks) ranks.innerHTML = renderRankLabels(orientation);
@@ -800,6 +820,18 @@ function updateBoardComponent(config) {
     const atEnd = currentPly >= maxPly;
     button.disabled = (nav === "start" || nav === "prev") ? atStart : atEnd;
   });
+  if (config.selectedSquare) {
+    const selected = board.querySelector(`[data-board-square="${config.selectedSquare}"]`);
+    selected?.classList.add("selected");
+  }
+  (config.legalMoves || []).forEach((move) => {
+    if (move.from !== config.selectedSquare) return;
+    const target = board.querySelector(`[data-board-square="${move.to}"]`);
+    target?.classList.add("legal-target");
+    if (pieceAt(config.fen, move.to)) {
+      target?.classList.add("legal-capture");
+    }
+  });
 }
 
 function nextExplorerPly(action) {
@@ -812,7 +844,7 @@ function nextExplorerPly(action) {
   return current;
 }
 
-function renderBoardSquares(fen, orientation = "white") {
+function renderBoardSquares(fen, orientation = "white", interactive = false) {
   if (!fen) {
     return `<div class="board-empty">No FEN available</div>`;
   }
@@ -835,15 +867,29 @@ function renderBoardSquares(fen, orientation = "white") {
     }
     return squares.slice(0, 8);
   });
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const squareRows = parsedRows.map((row, rankIndex) => {
+    const rank = 8 - rankIndex;
+    return row.map((piece, fileIndex) => ({
+      piece,
+      square: `${files[fileIndex]}${rank}`,
+      fileIndex,
+      rank,
+    }));
+  });
   const orientedRows = orientation === "black"
-    ? parsedRows.slice().reverse().map((row) => row.slice().reverse())
-    : parsedRows;
-  return orientedRows.map((row, rankIndex) => {
-    return row.map((piece, fileIndex) => {
-      const isLight = (rankIndex + fileIndex) % 2 === 0;
+    ? squareRows.slice().reverse().map((row) => row.slice().reverse())
+    : squareRows;
+  return orientedRows.map((row) => {
+    return row.map((item) => {
+      const isLight = (item.fileIndex + item.rank) % 2 === 0;
       return `
-        <div class="board-square ${isLight ? "light" : "dark"}">
-          ${piece ? renderPieceSvg(piece) : ""}
+        <div
+          class="board-square ${isLight ? "light" : "dark"} ${interactive ? "interactive" : ""}"
+          data-board-square="${escapeHtml(item.square)}"
+          ${interactive ? `role="button" aria-label="${escapeHtml(item.square)}"` : ""}
+        >
+          ${item.piece ? renderPieceSvg(item.piece) : ""}
         </div>
       `;
     }).join("");
@@ -879,6 +925,266 @@ function pieceName(type) {
     n: "knight",
     p: "pawn",
   }[type] || "piece";
+}
+
+async function openBlankAnalysisBoard() {
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
+  });
+  applyAnalysisWorkspace(workspace, null);
+  renderAnalysisBoard();
+  els.backFromAnalysis.hidden = true;
+  setView("analysis");
+}
+
+async function openGameAnalysisBoard(gameId) {
+  const workspace = await api(`/api/board/games/${gameId}${profileParam()}`);
+  applyAnalysisWorkspace(workspace, workspace.game || null);
+  renderAnalysisBoard();
+  els.backFromAnalysis.hidden = false;
+  setView("analysis");
+}
+
+function applyAnalysisWorkspace(workspace, sourceGame = undefined) {
+  state.analysisBoard = {
+    ...workspace,
+    sourceGame: sourceGame === undefined ? state.analysisBoard?.sourceGame || null : sourceGame,
+    selectedSquare: null,
+  };
+}
+
+function renderAnalysisBoard() {
+  const boardState = state.analysisBoard || {
+    starting_fen: STARTING_FEN,
+    fen: STARTING_FEN,
+    selected_ply: 0,
+    moves: [],
+    move_history: [],
+    positions: [],
+    legal_moves: [],
+    turn: "white",
+  };
+  const source = boardState.sourceGame;
+  els.analysisBoardMount.innerHTML = renderBoardComponent({
+    id: "analysisBoard",
+    mode: "analysis",
+    title: source ? `${source.white || "White"} vs ${source.black || "Black"}` : "Analysis Board",
+    startingFen: boardState.starting_fen || STARTING_FEN,
+    positions: boardState.move_history || [],
+    selectedPly: boardState.selected_ply || 0,
+    orientation: state.boardOrientations.analysisBoard,
+    emptyText: "Tap a piece to make a legal move.",
+    includeTimeline: true,
+    includeBoardActions: true,
+    allowInteraction: true,
+    timelineAttribute: "data-analysis-ply",
+    statusHtml: renderAnalysisStatus(boardState),
+  });
+  updateAnalysisBoard();
+  bindAnalysisBoardInteractions();
+}
+
+function renderAnalysisStatus(boardState) {
+  const engine = boardState.engine;
+  const engineText = !engine
+    ? "Engine off"
+    : engine.status === "ok"
+      ? `${formatEval(engine.score_cp, engine.mate)} · Best ${engine.best_move || "-"}`
+      : "Engine unavailable";
+  return `
+    <div class="analysis-status-grid">
+      <div>
+        <span class="metric-label">Turn</span>
+        <strong>${escapeHtml(capitalize(boardState.turn || "white"))}</strong>
+      </div>
+      <div>
+        <span class="metric-label">Engine</span>
+        <strong>${escapeHtml(engineText)}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function updateAnalysisBoard() {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const selected = (boardState.positions || []).find((position) => Number(position.ply) === Number(boardState.selected_ply));
+  updateBoardComponent({
+    id: "analysisBoard",
+    fen: boardState.fen,
+    selected,
+    positions: boardState.move_history || [],
+    selectedPly: boardState.selected_ply || 0,
+    orientation: state.boardOrientations.analysisBoard,
+    allowInteraction: true,
+    selectedSquare: boardState.selectedSquare,
+    legalMoves: boardState.legal_moves || [],
+  });
+  document.querySelectorAll("[data-analysis-ply]").forEach((node) => {
+    node.classList.toggle("selected", Number(node.dataset.analysisPly) === Number(boardState.selected_ply));
+  });
+
+  const indicator = document.querySelector('[data-board-indicator="analysisBoard"]');
+  if (indicator) indicator.textContent = selected?.ply ? moveLabel(selected) : "Start";
+
+  const current = document.querySelector('[data-board-current="analysisBoard"]');
+  if (!current) return;
+  current.innerHTML = `
+    <div class="stat-title">${selected?.ply ? escapeHtml(moveLabel(selected)) : "Starting position"}</div>
+    <div class="stat-subtitle">
+      ${escapeHtml(positionStatusText(boardState))}
+    </div>
+  `;
+}
+
+function bindAnalysisBoardInteractions() {
+  document.querySelectorAll('[data-board-id="analysisBoard"][data-board-nav]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      await navigateAnalysisBoard(button.dataset.boardNav);
+    });
+  });
+  document.querySelectorAll('[data-board-id="analysisBoard"][data-board-action]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (button.dataset.boardAction === "reset") {
+        await resetAnalysisBoard();
+      } else if (button.dataset.boardAction === "flip") {
+        state.boardOrientations.analysisBoard = state.boardOrientations.analysisBoard === "white" ? "black" : "white";
+        updateAnalysisBoard();
+      }
+    });
+  });
+  document.querySelectorAll("[data-analysis-ply]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      await selectAnalysisPly(Number(node.dataset.analysisPly));
+    });
+  });
+  document.querySelector('[data-board-surface="analysisBoard"]')?.addEventListener("click", async (event) => {
+    const square = event.target.closest("[data-board-square]")?.dataset.boardSquare;
+    if (square) {
+      await handleAnalysisSquare(square);
+    }
+  });
+}
+
+async function navigateAnalysisBoard(action) {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const maxPly = Math.max(0, ...(boardState.move_history || []).map((move) => Number(move.ply) || 0));
+  const current = Number(boardState.selected_ply) || 0;
+  const next = action === "start"
+    ? 0
+    : action === "end"
+      ? maxPly
+      : action === "prev"
+        ? Math.max(0, current - 1)
+        : action === "next"
+          ? Math.min(maxPly, current + 1)
+          : current;
+  await selectAnalysisPly(next);
+}
+
+async function selectAnalysisPly(ply) {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({
+      moves: boardState.moves || [],
+      starting_fen: boardState.starting_fen || STARTING_FEN,
+      selected_ply: Math.max(0, Number(ply) || 0),
+    }),
+  });
+  applyAnalysisWorkspace(workspace);
+  renderAnalysisBoard();
+}
+
+async function resetAnalysisBoard() {
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
+  });
+  applyAnalysisWorkspace(workspace, null);
+  renderAnalysisBoard();
+}
+
+async function handleAnalysisSquare(square) {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const selected = boardState.selectedSquare;
+  const clickedPiece = pieceAt(boardState.fen, square);
+  const turnColor = boardState.turn || "white";
+  if (!selected) {
+    if (pieceBelongsToTurn(clickedPiece, turnColor)) {
+      boardState.selectedSquare = square;
+      updateAnalysisBoard();
+    }
+    return;
+  }
+
+  const legal = legalMoveForSquares(selected, square, boardState.legal_moves || []);
+  if (legal) {
+    const workspace = await api("/api/board/move", {
+      method: "POST",
+      body: JSON.stringify({
+        move: legal.uci,
+        moves: boardState.moves || [],
+        starting_fen: boardState.starting_fen || STARTING_FEN,
+        selected_ply: boardState.selected_ply || 0,
+      }),
+    });
+    applyAnalysisWorkspace(workspace);
+    renderAnalysisBoard();
+    return;
+  }
+
+  if (pieceBelongsToTurn(clickedPiece, turnColor)) {
+    boardState.selectedSquare = square;
+  } else {
+    boardState.selectedSquare = null;
+  }
+  updateAnalysisBoard();
+}
+
+function legalMoveForSquares(from, to, legalMoves) {
+  const matches = legalMoves.filter((move) => move.from === from && move.to === to);
+  if (!matches.length) return null;
+  return matches.find((move) => move.promotion === "q") || matches[0];
+}
+
+function pieceBelongsToTurn(piece, turn) {
+  if (!piece) return false;
+  const isWhite = piece === piece.toUpperCase();
+  return (turn === "white" && isWhite) || (turn === "black" && !isWhite);
+}
+
+function pieceAt(fen, square) {
+  if (!fen || !square) return "";
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square.slice(1));
+  if (file < 0 || file > 7 || rank < 1 || rank > 8) return "";
+  const rows = String(fen).split(" ")[0].split("/");
+  const row = rows[8 - rank];
+  if (!row) return "";
+  let currentFile = 0;
+  for (const token of row) {
+    const empty = Number(token);
+    if (Number.isInteger(empty) && empty > 0) {
+      currentFile += empty;
+    } else {
+      if (currentFile === file) return token;
+      currentFile += 1;
+    }
+  }
+  return "";
+}
+
+function positionStatusText(boardState) {
+  if (boardState.is_checkmate) return "Checkmate";
+  if (boardState.is_stalemate) return "Stalemate";
+  if (boardState.result) return `Game over ${boardState.result}`;
+  if (boardState.is_check) return `${capitalize(boardState.turn)} to move, in check`;
+  return `${capitalize(boardState.turn || "white")} to move`;
 }
 
 function defaultSelectedPly(moves) {
@@ -1182,7 +1488,13 @@ if ("serviceWorker" in navigator) {
 }
 
 els.tabs.forEach((tab) => {
-  tab.addEventListener("click", () => setView(tab.dataset.view));
+  tab.addEventListener("click", async () => {
+    if (tab.dataset.view === "analysis" && !state.analysisBoard) {
+      await openBlankAnalysisBoard();
+      return;
+    }
+    setView(tab.dataset.view);
+  });
 });
 
 els.refreshButton.addEventListener("click", async () => {
@@ -1313,6 +1625,18 @@ els.gameList.addEventListener("keydown", async (event) => {
 });
 
 els.backToGames.addEventListener("click", () => setView("games"));
+
+els.backFromAnalysis.addEventListener("click", () => {
+  if (state.selectedGameId) {
+    setView("detail");
+  } else {
+    setView("games");
+  }
+});
+
+els.newAnalysisButton.addEventListener("click", async () => {
+  await openBlankAnalysisBoard();
+});
 
 els.analyzeAllButton.addEventListener("click", async () => {
   const ids = filteredGameIds();
