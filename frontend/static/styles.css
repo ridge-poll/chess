@@ -1151,6 +1151,88 @@ input[type="number"] {
   border-radius: var(--radius);
 }
 
+.engine-candidates {
+  display: grid;
+  gap: 6px;
+}
+
+.engine-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.engine-heading strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+  text-transform: none;
+}
+
+.engine-candidate {
+  display: grid;
+  grid-template-columns: 22px minmax(48px, auto) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.engine-candidate:not(:disabled):hover {
+  background: var(--hover);
+}
+
+.engine-candidate:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.engine-rank {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.engine-move {
+  font-weight: 850;
+}
+
+.engine-pv {
+  grid-column: 2 / -1;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.engine-skeleton {
+  height: 92px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--hover), var(--line), var(--hover));
+  background-size: 220% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
+}
+
 .explorer-side {
   display: grid;
   gap: 10px;
@@ -1261,6 +1343,12 @@ input[type="number"] {
   stroke-width: 2.4;
 }
 
+.eval-cursor {
+  stroke: var(--ink);
+  stroke-width: 1.2;
+  opacity: 0.55;
+}
+
 .eval-hit-target {
   cursor: pointer;
   fill: transparent;
@@ -1269,9 +1357,8 @@ input[type="number"] {
 }
 
 .eval-hit-target.selected {
-  fill: rgba(129, 182, 76, 0.18);
-  stroke: var(--eval-line);
-  stroke-width: 1;
+  fill: transparent;
+  stroke: transparent;
 }
 
 .eval-legend {
@@ -1437,6 +1524,12 @@ input[type="number"] {
   margin-top: 2px;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.branch-button {
+  min-height: 32px;
+  margin: 6px 0 0;
+  padding: 0;
 }
 
 @media (min-width: 720px) {

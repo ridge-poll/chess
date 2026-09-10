@@ -22,6 +22,11 @@ const state = {
   selectedPositions: [],
   startingFen: null,
   analysisReturnView: "games",
+  enginePanels: {
+    gameExplorer: { fen: null, loading: false, engine: null, error: null, requestId: 0 },
+    analysisBoard: { fen: null, loading: false, engine: null, error: null, requestId: 0 },
+    openingExplorer: { fen: null, loading: false, engine: null, error: null, requestId: 0 },
+  },
   boardOrientations: {
     gameExplorer: "white",
     analysisBoard: "white",
@@ -716,6 +721,7 @@ function renderEvaluationGraph(history, summary, game = {}) {
         <path class="eval-area" d="${areaPath}"></path>
         <line class="eval-grid-line" x1="${pad}" y1="${equalityY}" x2="${width - pad}" y2="${equalityY}"></line>
         <path class="eval-line" d="${path}"></path>
+        <line class="eval-cursor" id="evalCursor" x1="${xFor(0).toFixed(1)}" y1="${pad}" x2="${xFor(0).toFixed(1)}" y2="${height - pad}" hidden></line>
         ${points.map((point, index) => `
           <circle
             class="eval-hit-target"
@@ -765,6 +771,8 @@ function renderBoardExplorer(moves, startingFen) {
     orientation: state.boardOrientations.gameExplorer,
     emptyText: "Select a move to inspect the position.",
     includeTimeline: true,
+    enginePanel: state.enginePanels.gameExplorer,
+    engineGame: state.selectedGame || {},
   });
 }
 
@@ -777,6 +785,12 @@ function bindAnalysisDetailInteractions() {
         updateSelectedPly();
       }
     });
+  });
+  document.querySelector('[data-board-component="gameExplorer"]')?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-branch-from-ply]");
+    if (button) {
+      await openGameAnalysisBoardFromPly(Number(button.dataset.branchFromPly) || 0);
+    }
   });
   document.querySelectorAll('[data-board-id="gameExplorer"][data-board-nav]').forEach((button) => {
     button.addEventListener("click", () => {
@@ -792,6 +806,7 @@ function updateSelectedPly() {
     const ply = Number(node.dataset.evalPly || node.dataset.movePly || node.dataset.selectPly || node.dataset.explorerPly);
     node.classList.toggle("selected", ply === Number(state.selectedPly));
   });
+  updateEvaluationCursor();
   updateExplorerBoard(selected);
   const panel = document.querySelector("#evalSelected");
   if (!panel) return;
@@ -814,6 +829,21 @@ function updateSelectedPly() {
     <span class="pill ${classificationClass(selected.classification)}">${escapeHtml(selected.classification || "unknown")}</span>
     <strong>${playerAdvantageLabel(selected.eval_after_cp ?? selected.eval_after_display_cp, selected.mate_after, state.selectedGame || {})}</strong>
   `;
+}
+
+function updateEvaluationCursor() {
+  const cursor = document.querySelector("#evalCursor");
+  if (!cursor) return;
+  const selectedTarget = document.querySelector(`[data-eval-ply="${state.selectedPly}"]`);
+  if (!selectedTarget) {
+    cursor.setAttribute("hidden", "");
+    return;
+  }
+  const x = selectedTarget.getAttribute("cx");
+  if (!x) return;
+  cursor.removeAttribute("hidden");
+  cursor.setAttribute("x1", x);
+  cursor.setAttribute("x2", x);
 }
 
 function updateExplorerBoard(selected) {
@@ -839,6 +869,7 @@ function updateExplorerBoard(selected) {
       <div class="stat-title">Starting position</div>
       <div class="stat-subtitle">Use the arrows or tap a move below.</div>
     `;
+    requestPositionEngine("gameExplorer", fen, state.selectedGame || {}, false);
     return;
   }
   current.innerHTML = `
@@ -848,7 +879,9 @@ function updateExplorerBoard(selected) {
       · Eval ${formatEval(selected.eval_after_cp, selected.mate_after)}
       ${selected.clock_seconds == null ? "" : `· Clock ${formatClock(selected.clock_seconds)}`}
     </div>
+    <button class="text-button branch-button" data-branch-from-ply="${state.selectedPly || 0}">Analyze from here</button>
   `;
+  requestPositionEngine("gameExplorer", fen, state.selectedGame || {}, false);
 }
 
 function renderBoardComponent(config) {
@@ -886,6 +919,9 @@ function renderBoardComponent(config) {
             </div>
           ` : ""}
           ${config.statusHtml || ""}
+          <div class="engine-candidates" data-engine-panel="${escapeHtml(config.id)}">
+            ${renderEnginePanel(config.id, config.enginePanel || null, config.engineGame || {}, Boolean(config.allowEnginePlay))}
+          </div>
           ${config.includeTimeline ? `
             <div class="move-strip" aria-label="Move timeline">
               <button class="move-chip start" ${timelineAttribute}="0">Start</button>
@@ -932,6 +968,98 @@ function updateBoardComponent(config) {
     if (pieceAt(config.fen, move.to)) {
       target?.classList.add("legal-capture");
     }
+  });
+}
+
+async function requestPositionEngine(boardId, fen, game = {}, allowPlay = false) {
+  if (!fen || !state.enginePanels[boardId]) return;
+  const panel = state.enginePanels[boardId];
+  if (panel.fen === fen && (panel.loading || panel.engine || panel.error)) {
+    updateEnginePanel(boardId, game, allowPlay);
+    return;
+  }
+  const requestId = (panel.requestId || 0) + 1;
+  state.enginePanels[boardId] = { fen, loading: true, engine: null, error: null, requestId };
+  updateEnginePanel(boardId, game, allowPlay);
+  try {
+    const engine = await api("/api/analysis/position", {
+      method: "POST",
+      body: JSON.stringify({ fen, depth: selectedDepth(), multipv: 3 }),
+    });
+    const current = state.enginePanels[boardId];
+    if (!current || current.requestId !== requestId || current.fen !== fen) return;
+    state.enginePanels[boardId] = { fen, loading: false, engine, error: null, requestId };
+  } catch (error) {
+    const current = state.enginePanels[boardId];
+    if (!current || current.requestId !== requestId || current.fen !== fen) return;
+    state.enginePanels[boardId] = { fen, loading: false, engine: null, error: error.message, requestId };
+  }
+  updateEnginePanel(boardId, game, allowPlay);
+}
+
+function updateEnginePanel(boardId, game = {}, allowPlay = false) {
+  const target = document.querySelector(`[data-engine-panel="${boardId}"]`);
+  if (!target) return;
+  target.innerHTML = renderEnginePanel(boardId, state.enginePanels[boardId], game, allowPlay);
+  bindEngineCandidateInteractions(boardId, allowPlay);
+}
+
+function renderEnginePanel(boardId, panel, game = {}, allowPlay = false) {
+  if (!panel) return "";
+  if (panel.loading) {
+    return `
+      <div class="engine-heading">
+        <span>Engine</span>
+        <strong>Thinking...</strong>
+      </div>
+      <div class="engine-skeleton"></div>
+    `;
+  }
+  if (panel.error) {
+    return `
+      <div class="engine-heading">
+        <span>Engine</span>
+        <strong>Unavailable</strong>
+      </div>
+      <div class="stat-subtitle">${escapeHtml(panel.error)}</div>
+    `;
+  }
+  const engine = panel.engine;
+  if (!engine) return "";
+  const candidates = engine.candidates || [];
+  return `
+    <div class="engine-heading">
+      <span>Engine</span>
+      <strong>${escapeHtml(advantageLabel(engine.score_cp, engine.mate))}</strong>
+    </div>
+    ${candidates.length ? candidates.map((candidate) => `
+      <button
+        class="engine-candidate"
+        data-engine-candidate="${escapeHtml(boardId)}"
+        data-engine-uci="${escapeHtml(candidate.uci || "")}"
+        ${allowPlay ? "" : "disabled"}
+      >
+        <span class="engine-rank">${candidate.rank}</span>
+        <span class="engine-move">${escapeHtml(candidate.san || candidate.uci || "-")}</span>
+        <strong>${escapeHtml(advantageLabel(candidate.score_cp, candidate.mate))}</strong>
+        <span class="engine-pv">${escapeHtml((candidate.pv_san || []).slice(1, 6).join(" "))}</span>
+      </button>
+    `).join("") : `<div class="stat-subtitle">No legal engine candidates.</div>`}
+  `;
+}
+
+function bindEngineCandidateInteractions(boardId, allowPlay) {
+  if (!allowPlay) return;
+  document.querySelectorAll(`[data-engine-candidate="${boardId}"]`).forEach((button) => {
+    button.addEventListener("click", async () => {
+      const uci = button.dataset.engineUci;
+      if (!uci) return;
+      if (boardId === "analysisBoard") {
+        await playAnalysisUci(uci);
+      } else if (boardId === "openingExplorer") {
+        await playOpeningUci(uci);
+      }
+    });
   });
 }
 
@@ -1050,6 +1178,26 @@ async function openGameAnalysisBoard(gameId) {
   setView("analysis");
 }
 
+async function openGameAnalysisBoardFromPly(ply) {
+  if (!state.selectedGameId) return;
+  state.analysisReturnView = "detail";
+  const workspace = await api(`/api/board/games/${state.selectedGameId}${profileParam()}`);
+  workspace.selected_ply = Math.max(0, Math.min(Number(ply) || 0, (workspace.moves || []).length));
+  const selectedMoves = (workspace.moves || []).slice(0, workspace.selected_ply);
+  const selectedWorkspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({
+      moves: selectedMoves,
+      starting_fen: workspace.starting_fen || STARTING_FEN,
+      selected_ply: selectedMoves.length,
+    }),
+  });
+  applyAnalysisWorkspace({ ...selectedWorkspace, game: workspace.game }, workspace.game || null);
+  renderAnalysisBoard();
+  els.backFromAnalysis.textContent = "< Game";
+  setView("analysis");
+}
+
 function applyAnalysisWorkspace(workspace, sourceGame = undefined) {
   state.analysisBoard = {
     ...workspace,
@@ -1081,21 +1229,18 @@ function renderAnalysisBoard() {
     emptyText: "Tap a piece to make a legal move.",
     includeTimeline: true,
     includeBoardActions: true,
+    allowEnginePlay: true,
+    enginePanel: state.enginePanels.analysisBoard,
     allowInteraction: true,
     timelineAttribute: "data-analysis-ply",
     statusHtml: renderAnalysisStatus(boardState),
   });
   updateAnalysisBoard();
   bindAnalysisBoardInteractions();
+  requestPositionEngine("analysisBoard", boardState.fen, {}, true);
 }
 
 function renderAnalysisStatus(boardState) {
-  const engine = boardState.engine;
-  const engineText = !engine
-    ? "Engine off"
-    : engine.status === "ok"
-      ? `${formatEval(engine.score_cp, engine.mate)} · Best ${engine.best_move || "-"}`
-      : "Engine unavailable";
   return `
     <div class="analysis-status-grid">
       <div>
@@ -1103,8 +1248,8 @@ function renderAnalysisStatus(boardState) {
         <strong>${escapeHtml(capitalize(boardState.turn || "white"))}</strong>
       </div>
       <div>
-        <span class="metric-label">Engine</span>
-        <strong>${escapeHtml(engineText)}</strong>
+        <span class="metric-label">Position</span>
+        <strong>${escapeHtml(positionStatusText(boardState))}</strong>
       </div>
     </div>
   `;
@@ -1140,6 +1285,7 @@ function updateAnalysisBoard() {
       ${escapeHtml(positionStatusText(boardState))}
     </div>
   `;
+  requestPositionEngine("analysisBoard", boardState.fen, {}, true);
 }
 
 function bindAnalysisBoardInteractions() {
@@ -1169,6 +1315,7 @@ function bindAnalysisBoardInteractions() {
       await handleAnalysisSquare(square);
     }
   });
+  bindEngineCandidateInteractions("analysisBoard", true);
 }
 
 async function navigateAnalysisBoard(action) {
@@ -1228,17 +1375,7 @@ async function handleAnalysisSquare(square) {
 
   const legal = legalMoveForSquares(selected, square, boardState.legal_moves || []);
   if (legal) {
-    const workspace = await api("/api/board/move", {
-      method: "POST",
-      body: JSON.stringify({
-        move: legal.uci,
-        moves: boardState.moves || [],
-        starting_fen: boardState.starting_fen || STARTING_FEN,
-        selected_ply: boardState.selected_ply || 0,
-      }),
-    });
-    applyAnalysisWorkspace(workspace);
-    renderAnalysisBoard();
+    await playAnalysisUci(legal.uci);
     return;
   }
 
@@ -1248,6 +1385,22 @@ async function handleAnalysisSquare(square) {
     boardState.selectedSquare = null;
   }
   updateAnalysisBoard();
+}
+
+async function playAnalysisUci(uci) {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const workspace = await api("/api/board/move", {
+    method: "POST",
+    body: JSON.stringify({
+      move: uci,
+      moves: boardState.moves || [],
+      starting_fen: boardState.starting_fen || STARTING_FEN,
+      selected_ply: boardState.selected_ply || 0,
+    }),
+  });
+  applyAnalysisWorkspace(workspace);
+  renderAnalysisBoard();
 }
 
 function legalMoveForSquares(from, to, legalMoves) {
@@ -1343,6 +1496,8 @@ function renderOpeningExplorer() {
     emptyText: "Tap moves to identify the opening.",
     includeTimeline: true,
     includeBoardActions: true,
+    allowEnginePlay: true,
+    enginePanel: state.enginePanels.openingExplorer,
     allowInteraction: true,
     timelineAttribute: "data-opening-ply",
     statusHtml: `
@@ -1360,6 +1515,7 @@ function renderOpeningExplorer() {
   });
   updateOpeningExplorer();
   bindOpeningExplorerInteractions();
+  requestPositionEngine("openingExplorer", explorer.fen, {}, true);
 }
 
 function updateOpeningExplorer() {
@@ -1389,6 +1545,7 @@ function updateOpeningExplorer() {
       <div class="stat-subtitle">${escapeHtml(positionStatusText(explorer))}</div>
     `;
   }
+  requestPositionEngine("openingExplorer", explorer.fen, {}, true);
 }
 
 function bindOpeningExplorerInteractions() {
@@ -1418,6 +1575,7 @@ function bindOpeningExplorerInteractions() {
       await handleOpeningSquare(square);
     }
   });
+  bindEngineCandidateInteractions("openingExplorer", true);
 }
 
 async function navigateOpeningExplorer(action) {
@@ -1478,18 +1636,7 @@ async function handleOpeningSquare(square) {
 
   const legal = legalMoveForSquares(selected, square, explorer.legal_moves || []);
   if (legal) {
-    const workspace = await api("/api/board/move", {
-      method: "POST",
-      body: JSON.stringify({
-        move: legal.uci,
-        moves: explorer.moves || [],
-        starting_fen: explorer.starting_fen || STARTING_FEN,
-        selected_ply: explorer.selected_ply || 0,
-      }),
-    });
-    applyOpeningExplorerWorkspace(workspace);
-    await refreshOpeningName();
-    renderOpeningExplorer();
+    await playOpeningUci(legal.uci);
     return;
   }
 
@@ -1499,6 +1646,23 @@ async function handleOpeningSquare(square) {
     explorer.selectedSquare = null;
   }
   updateOpeningExplorer();
+}
+
+async function playOpeningUci(uci) {
+  const explorer = state.openingExplorer;
+  if (!explorer) return;
+  const workspace = await api("/api/board/move", {
+    method: "POST",
+    body: JSON.stringify({
+      move: uci,
+      moves: explorer.moves || [],
+      starting_fen: explorer.starting_fen || STARTING_FEN,
+      selected_ply: explorer.selected_ply || 0,
+    }),
+  });
+  applyOpeningExplorerWorkspace(workspace);
+  await refreshOpeningName();
+  renderOpeningExplorer();
 }
 
 function defaultSelectedPly(moves) {

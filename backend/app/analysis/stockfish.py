@@ -49,22 +49,29 @@ class StockfishClient(AbstractContextManager["StockfishClient"]):
             raise RuntimeError("StockfishClient must be used as a context manager.")
 
         board = chess.Board(fen)
-        requested_lines = max(1, min(multipv, max(1, board.legal_moves.count())))
-        result = self._engine.analyse(
-            board,
-            chess.engine.Limit(depth=depth),
-            multipv=requested_lines,
-        )
-        infos = result if isinstance(result, list) else [result]
-        candidates = [_candidate_from_info(board, info, rank) for rank, info in enumerate(infos, start=1)]
+        legal_count = board.legal_moves.count()
+        if legal_count:
+            requested_lines = max(1, min(multipv, legal_count))
+            result = self._engine.analyse(
+                board,
+                chess.engine.Limit(depth=depth),
+                multipv=requested_lines,
+            )
+            infos = result if isinstance(result, list) else [result]
+            candidates = [_candidate_from_info(board, info, rank) for rank, info in enumerate(infos, start=1)]
+            score_info = infos[0]
+        else:
+            score_info = self._engine.analyse(board, chess.engine.Limit(depth=depth))
+            candidates = []
+        score = score_info["score"].pov(chess.WHITE)
         best = candidates[0] if candidates else None
 
         evaluation = EngineEvaluation(
             fen=fen,
             depth=depth,
             best_move=best.uci if best else None,
-            score_cp=best.score_cp if best else None,
-            mate=best.mate if best else None,
+            score_cp=score.score(mate_score=None),
+            mate=score.mate(),
         )
         return PositionEngineAnalysis(evaluation=evaluation, candidates=candidates)
 
