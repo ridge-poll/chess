@@ -43,3 +43,20 @@ class EngineEvaluation:
     best_move: str | None
     score_cp: int | None
     mate: int | None
+
+
+@dataclass(frozen=True)
+class EngineCandidate:
+    rank: int
+    uci: str
+    san: str
+    score_cp: int | None
+    mate: int | None
+    pv_uci: list[str]
+    pv_san: list[str]
+
+
+@dataclass(frozen=True)
+class PositionEngineAnalysis:
+    evaluation: EngineEvaluation
+    candidates: list[EngineCandidate]

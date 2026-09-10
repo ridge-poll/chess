@@ -4,8 +4,8 @@ from typing import Any
 
 import chess
 
-from app.analysis.stockfish import StockfishClient
 from app.config import settings
+from app.services.engine_analysis import DEFAULT_MULTIPV, analyze_position
 from app.services.position_analysis import get_game_positions
 
 STARTING_FEN = chess.STARTING_FEN
@@ -188,14 +188,6 @@ def _snapshot_from_fen(fen: str, ply: int, san: str | None, uci: str | None) -> 
 
 def _engine_snapshot(fen: str, depth: int) -> dict[str, Any]:
     try:
-        with StockfishClient() as engine:
-            evaluation = engine.evaluate(fen, depth)
+        return analyze_position(fen, depth, DEFAULT_MULTIPV)
     except Exception as exc:
         return {"status": "unavailable", "error": str(exc)}
-    return {
-        "status": "ok",
-        "depth": evaluation.depth,
-        "best_move": evaluation.best_move,
-        "score_cp": evaluation.score_cp,
-        "mate": evaluation.mate,
-    }

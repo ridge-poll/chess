@@ -21,6 +21,7 @@ const state = {
   selectedPly: null,
   selectedPositions: [],
   startingFen: null,
+  analysisReturnView: "games",
   boardOrientations: {
     gameExplorer: "white",
     analysisBoard: "white",
@@ -1028,21 +1029,24 @@ function pieceName(type) {
 }
 
 async function openBlankAnalysisBoard() {
+  state.selectedGameId = null;
+  state.analysisReturnView = state.activeView === "more" ? "more" : "games";
   const workspace = await api("/api/board/position", {
     method: "POST",
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
   });
   applyAnalysisWorkspace(workspace, null);
   renderAnalysisBoard();
-  els.backFromAnalysis.hidden = true;
+  els.backFromAnalysis.textContent = state.analysisReturnView === "more" ? "< More" : "< Games";
   setView("analysis");
 }
 
 async function openGameAnalysisBoard(gameId) {
+  state.analysisReturnView = "detail";
   const workspace = await api(`/api/board/games/${gameId}${profileParam()}`);
   applyAnalysisWorkspace(workspace, workspace.game || null);
   renderAnalysisBoard();
-  els.backFromAnalysis.hidden = false;
+  els.backFromAnalysis.textContent = "< Game";
   setView("analysis");
 }
 
@@ -1985,11 +1989,7 @@ els.backToGames.addEventListener("click", () => setView("games"));
 els.backFromOpening.addEventListener("click", () => setView("openings"));
 
 els.backFromAnalysis.addEventListener("click", () => {
-  if (state.selectedGameId) {
-    setView("detail");
-  } else {
-    setView("games");
-  }
+  setView(state.analysisReturnView || (state.selectedGameId ? "detail" : "games"));
 });
 
 els.newAnalysisButton.addEventListener("click", async () => {

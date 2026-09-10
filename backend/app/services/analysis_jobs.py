@@ -8,6 +8,7 @@ from app.analysis.metrics import classify_loss, move_loss
 from app.analysis.stockfish import StockfishClient
 from app.db import get_connection
 from app.models import EngineEvaluation
+from app.services.engine_analysis import get_or_create_position_analysis
 from app.services.profiles import resolve_profile_id
 
 logger = logging.getLogger(__name__)
@@ -187,31 +188,7 @@ def prepare_queued_job(game_id: int, depth: int, profile_id: int | None = None) 
 
 
 def _get_or_create_evaluation(fen: str, depth: int, engine: StockfishClient) -> EngineEvaluation:
-    with get_connection() as conn:
-        cached = conn.execute(
-            "SELECT * FROM position_evaluations WHERE fen = ? AND depth = ?",
-            (fen, depth),
-        ).fetchone()
-        if cached:
-            return EngineEvaluation(
-                fen=fen,
-                depth=depth,
-                best_move=cached["best_move"],
-                score_cp=cached["score_cp"],
-                mate=cached["mate"],
-            )
-
-    evaluation = engine.evaluate(fen, depth)
-    with get_connection() as conn:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO position_evaluations
-            (fen, depth, best_move, score_cp, mate)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (fen, depth, evaluation.best_move, evaluation.score_cp, evaluation.mate),
-        )
-    return evaluation
+    return get_or_create_position_analysis(fen, depth, engine=engine).evaluation
 
 
 def _upsert_job(

@@ -8,7 +8,7 @@ import chess
 import chess.engine
 
 from app.config import settings
-from app.models import EngineEvaluation
+from app.models import EngineCandidate, EngineEvaluation, PositionEngineAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -41,18 +41,55 @@ class StockfishClient(AbstractContextManager["StockfishClient"]):
             self._engine.quit()
 
     def evaluate(self, fen: str, depth: int) -> EngineEvaluation:
+        analysis = self.analyze_position(fen, depth, multipv=1)
+        return analysis.evaluation
+
+    def analyze_position(self, fen: str, depth: int, multipv: int = 3) -> PositionEngineAnalysis:
         if self._engine is None:
             raise RuntimeError("StockfishClient must be used as a context manager.")
 
         board = chess.Board(fen)
-        result = self._engine.analyse(board, chess.engine.Limit(depth=depth))
-        pov_score = result["score"].pov(chess.WHITE)
-        best_move = result.get("pv", [None])[0]
+        requested_lines = max(1, min(multipv, max(1, board.legal_moves.count())))
+        result = self._engine.analyse(
+            board,
+            chess.engine.Limit(depth=depth),
+            multipv=requested_lines,
+        )
+        infos = result if isinstance(result, list) else [result]
+        candidates = [_candidate_from_info(board, info, rank) for rank, info in enumerate(infos, start=1)]
+        best = candidates[0] if candidates else None
 
-        return EngineEvaluation(
+        evaluation = EngineEvaluation(
             fen=fen,
             depth=depth,
-            best_move=best_move.uci() if best_move else None,
-            score_cp=pov_score.score(mate_score=None),
-            mate=pov_score.mate(),
+            best_move=best.uci if best else None,
+            score_cp=best.score_cp if best else None,
+            mate=best.mate if best else None,
         )
+        return PositionEngineAnalysis(evaluation=evaluation, candidates=candidates)
+
+
+def _candidate_from_info(board: chess.Board, info: dict[str, object], rank: int) -> EngineCandidate:
+    score = info["score"].pov(chess.WHITE)  # type: ignore[index, union-attr]
+    pv = list(info.get("pv", []))  # type: ignore[union-attr]
+    move = pv[0] if pv else None
+    return EngineCandidate(
+        rank=rank,
+        uci=move.uci() if move else "",
+        san=board.san(move) if move else "",
+        score_cp=score.score(mate_score=None),
+        mate=score.mate(),
+        pv_uci=[pv_move.uci() for pv_move in pv],
+        pv_san=_pv_to_san(board, pv),
+    )
+
+
+def _pv_to_san(board: chess.Board, pv: list[chess.Move]) -> list[str]:
+    replay = board.copy(stack=False)
+    sans: list[str] = []
+    for move in pv:
+        if move not in replay.legal_moves:
+            break
+        sans.append(replay.san(move))
+        replay.push(move)
+    return sans

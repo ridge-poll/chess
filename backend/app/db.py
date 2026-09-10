@@ -73,6 +73,20 @@ CREATE TABLE IF NOT EXISTS position_evaluations (
     UNIQUE(fen, depth)
 );
 
+CREATE TABLE IF NOT EXISTS position_evaluation_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evaluation_id INTEGER NOT NULL REFERENCES position_evaluations(id) ON DELETE CASCADE,
+    rank INTEGER NOT NULL,
+    move_uci TEXT NOT NULL,
+    move_san TEXT NOT NULL,
+    score_cp INTEGER,
+    mate INTEGER,
+    pv_uci TEXT NOT NULL DEFAULT '[]',
+    pv_san TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(evaluation_id, rank)
+);
+
 CREATE TABLE IF NOT EXISTS move_analyses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,

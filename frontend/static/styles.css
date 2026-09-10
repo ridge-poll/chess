@@ -134,9 +134,18 @@ body.workspace-active .bottom-nav {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   padding: 10px 0 16px;
+}
+
+.app-logo {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #262421;
+  object-fit: cover;
 }
 
 .profile-select-label {
