@@ -13,6 +13,7 @@ const state = {
   search: "",
   sortBy: "recent",
   timeFilter: "all",
+  filtersOpen: false,
   statsTime: "Overall",
   theme: document.documentElement.dataset.theme || "light",
   selectedGameId: null,
@@ -77,6 +78,9 @@ const els = {
   syncButton: document.querySelector("#syncButton"),
   syncHistory: document.querySelector("#syncHistory"),
   gameList: document.querySelector("#gameList"),
+  gameCountLabel: document.querySelector("#gameCountLabel"),
+  gameFilterPanel: document.querySelector("#gameFilterPanel"),
+  filterToggleButton: document.querySelector("#filterToggleButton"),
   searchInput: document.querySelector("#searchInput"),
   timeFilterSelect: document.querySelector("#timeFilterSelect"),
   sortSelect: document.querySelector("#sortSelect"),
@@ -88,6 +92,7 @@ const els = {
   jobList: document.querySelector("#jobList"),
   backToGames: document.querySelector("#backToGames"),
   backFromAnalysis: document.querySelector("#backFromAnalysis"),
+  backFromOpening: document.querySelector("#backFromOpening"),
   gameDetail: document.querySelector("#gameDetail"),
   analysisBoardMount: document.querySelector("#analysisBoardMount"),
   confirmModal: document.querySelector("#confirmModal"),
@@ -120,6 +125,7 @@ function showStatus(message, timeout = 5000) {
 
 function setView(view) {
   state.activeView = view;
+  document.body.classList.toggle("workspace-active", isWorkspaceView(view));
   Object.entries(els.views).forEach(([key, node]) => {
     node.classList.toggle("active", key === view);
   });
@@ -128,6 +134,10 @@ function setView(view) {
     button.classList.toggle("active", button.dataset.view === primaryView);
   });
   if (els.pageTitle) els.pageTitle.textContent = pageTitleFor(view);
+}
+
+function isWorkspaceView(view) {
+  return view === "analysis" || view === "openings";
 }
 
 function primaryViewFor(view) {
@@ -426,28 +436,28 @@ function renderGames() {
     const matchesTime = state.timeFilter === "all" || game.time_class === state.timeFilter;
     return matchesQuery && matchesTime;
   }));
+  if (els.gameFilterPanel) els.gameFilterPanel.hidden = !state.filtersOpen;
+  if (els.filterToggleButton) els.filterToggleButton.textContent = state.filtersOpen ? "Hide Filters" : "Filter";
+  if (els.gameCountLabel) {
+    const label = games.length === 1 ? "1 game" : `${games.length} games`;
+    els.gameCountLabel.textContent = label;
+  }
   if (!games.length) {
     els.gameList.innerHTML = `<section class="panel">No games match.</section>`;
     return;
   }
   els.gameList.innerHTML = games.map((game) => `
-    <article class="game-card clickable-card" data-game-id="${game.id}" role="button" tabindex="0">
-      <div class="game-title">
-        <span>${escapeHtml(game.white || "White")} vs ${escapeHtml(game.black || "Black")}</span>
-        <button class="trash-button" data-delete-game-id="${game.id}" aria-label="Delete game">
-          ${trashIcon()}
-        </button>
+    <article class="game-row clickable-card" data-game-id="${game.id}" role="button" tabindex="0">
+      <span class="result-mark ${gameResultClass(game)}" aria-label="${escapeHtml(gameResultWord(game))}">${escapeHtml(gameResultMark(game))}</span>
+      <div class="game-row-main">
+        <div class="game-row-title">
+          <span>${escapeHtml(opponentName(game))}</span>
+          <span class="game-row-elo">${escapeHtml(opponentElo(game))}</span>
+        </div>
+        <div class="game-row-meta">${escapeHtml(game.opening || game.eco || "Unknown opening")} · ${escapeHtml(shortDate(game.played_at))}</div>
       </div>
-      <div class="game-meta">
-        ${escapeHtml(game.played_at || "Unknown date")} · ${escapeHtml(game.result || "*")} · ${escapeHtml(game.opening || game.eco || "Unknown opening")}
-      </div>
-      <div class="game-meta">
-        ${game.ply_count} plies · ${formatNumber(game.acpl)} ACPL · ${accuracyLabel(game)}
-      </div>
-      <div class="game-card-footer">
-        <span class="pill time-pill">${escapeHtml(game.time_class || "Unknown")}</span>
-        ${statusPill(game)}
-      </div>
+      <span class="time-icon" title="${escapeHtml(game.time_class || "Unknown")}">${timeControlIcon(game.time_class)}</span>
+      <span class="game-row-result">${escapeHtml(displayResult(game.result))}</span>
     </article>
   `).join("");
 }
@@ -471,6 +481,63 @@ function sortGames(games) {
     sorted.sort((a, b) => date(b).localeCompare(date(a)) || Number(b.id) - Number(a.id));
   }
   return sorted;
+}
+
+function gameResultMark(game) {
+  const result = gameResultWord(game);
+  if (result === "win") return "✓";
+  if (result === "loss") return "×";
+  if (result === "draw") return "–";
+  return "";
+}
+
+function gameResultClass(game) {
+  return gameResultWord(game);
+}
+
+function gameResultWord(game) {
+  const result = String(game.result || "");
+  if (result === "1/2-1/2") return "draw";
+  const userColor = userColorForGame(game);
+  if (result === "1-0") return userColor === "white" ? "win" : "loss";
+  if (result === "0-1") return userColor === "black" ? "win" : "loss";
+  return "unknown";
+}
+
+function opponentName(game) {
+  const userColor = userColorForGame(game);
+  return userColor === "white" ? (game.black || "Black") : (game.white || "White");
+}
+
+function opponentElo(game) {
+  const userColor = userColorForGame(game);
+  const elo = userColor === "white" ? game.black_elo : game.white_elo;
+  return elo == null ? "Unrated" : String(elo);
+}
+
+function displayResult(result) {
+  if (result === "1/2-1/2") return "½-½";
+  return result || "*";
+}
+
+function shortDate(value) {
+  if (!value) return "Unknown date";
+  const text = String(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return text;
+  return `${match[2]}/${match[3]}/${match[1].slice(2)}`;
+}
+
+function timeControlIcon(timeClass) {
+  const label = String(timeClass || "Unknown");
+  const icons = {
+    Bullet: "•",
+    Blitz: "⚡",
+    Rapid: "◷",
+    Classical: "◴",
+    "Daily / Correspondence": "✉",
+  };
+  return icons[label] || "○";
 }
 
 function filteredGameIds() {
@@ -1813,6 +1880,11 @@ els.searchInput.addEventListener("input", (event) => {
   renderGames();
 });
 
+els.filterToggleButton.addEventListener("click", () => {
+  state.filtersOpen = !state.filtersOpen;
+  renderGames();
+});
+
 els.timeFilterSelect.addEventListener("change", (event) => {
   state.timeFilter = event.target.value;
   renderGames();
@@ -1903,6 +1975,8 @@ els.gameList.addEventListener("keydown", async (event) => {
 });
 
 els.backToGames.addEventListener("click", () => setView("games"));
+
+els.backFromOpening.addEventListener("click", () => setView("home"));
 
 els.backFromAnalysis.addEventListener("click", () => {
   if (state.selectedGameId) {
