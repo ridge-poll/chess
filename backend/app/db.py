@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE TABLE IF NOT EXISTS profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
+    chesscom_username TEXT,
+    chesscom_sync_days INTEGER NOT NULL DEFAULT 7,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -158,6 +160,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if sync_columns and "profile_id" not in sync_columns:
         _rebuild_syncs_with_profiles(conn, default_profile_id)
 
+    profile_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(profiles)").fetchall()
+    }
+    if profile_columns and "chesscom_username" not in profile_columns:
+        conn.execute("ALTER TABLE profiles ADD COLUMN chesscom_username TEXT")
+    if profile_columns and "chesscom_sync_days" not in profile_columns:
+        conn.execute("ALTER TABLE profiles ADD COLUMN chesscom_sync_days INTEGER NOT NULL DEFAULT 7")
+
     active = conn.execute("SELECT value FROM app_settings WHERE key = 'active_profile_id'").fetchone()
     if not active:
         conn.execute(
@@ -172,6 +183,8 @@ def _ensure_profile_tables(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS profiles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
+            chesscom_username TEXT,
+            chesscom_sync_days INTEGER NOT NULL DEFAULT 7,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 

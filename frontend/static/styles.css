@@ -508,6 +508,40 @@ input[type="number"] {
   gap: 10px;
 }
 
+.opening-explorer-shell {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, var(--accent-soft), transparent 58%),
+    var(--surface);
+}
+
+.opening-explorer-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.opening-explorer-heading h2 {
+  margin-bottom: 0;
+  font-size: 1.28rem;
+}
+
+.opening-explorer-shell .board-panel {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.opening-explorer-shell .board-panel > .panel-heading {
+  display: none;
+}
+
 .opening-stat-card {
   display: grid;
   gap: 12px;

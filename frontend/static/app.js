@@ -23,8 +23,10 @@ const state = {
   boardOrientations: {
     gameExplorer: "white",
     analysisBoard: "white",
+    openingExplorer: "white",
   },
   analysisBoard: null,
+  openingExplorer: null,
   pollTimer: null,
   pendingDeleteGameId: null,
 };
@@ -61,6 +63,9 @@ const els = {
   openingEdgeList: document.querySelector("#openingEdgeList"),
   openingSortSelect: document.querySelector("#openingSortSelect"),
   openingStatsList: document.querySelector("#openingStatsList"),
+  openingExplorerMount: document.querySelector("#openingExplorerMount"),
+  openingExplorerName: document.querySelector("#openingExplorerName"),
+  openingExplorerPly: document.querySelector("#openingExplorerPly"),
   importButton: document.querySelector("#importButton"),
   fileInput: document.querySelector("#fileInput"),
   pgnInput: document.querySelector("#pgnInput"),
@@ -170,6 +175,8 @@ function renderProfiles() {
     </option>
   `).join("");
   els.activeImportProfile.textContent = `Profile: ${state.activeProfile?.name || "-"}`;
+  els.chesscomUsername.value = state.activeProfile?.chesscom_username || "";
+  els.syncLimit.value = state.activeProfile?.chesscom_sync_days || 7;
 }
 
 function profileParam() {
@@ -1187,6 +1194,216 @@ function positionStatusText(boardState) {
   return `${capitalize(boardState.turn || "white")} to move`;
 }
 
+async function ensureOpeningExplorer() {
+  if (state.openingExplorer) {
+    renderOpeningExplorer();
+    return;
+  }
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
+  });
+  applyOpeningExplorerWorkspace(workspace, "Opening not identified");
+  renderOpeningExplorer();
+}
+
+function applyOpeningExplorerWorkspace(workspace, openingName = undefined) {
+  state.openingExplorer = {
+    ...workspace,
+    openingName: openingName === undefined ? state.openingExplorer?.openingName || "Opening not identified" : openingName,
+    selectedSquare: null,
+  };
+}
+
+async function refreshOpeningName() {
+  const explorer = state.openingExplorer;
+  if (!explorer) return;
+  const sans = (explorer.move_history || []).map((move) => move.san).filter(Boolean);
+  if (!sans.length) {
+    explorer.openingName = "Opening not identified";
+    return;
+  }
+  const result = await api("/api/openings/detect", {
+    method: "POST",
+    body: JSON.stringify({ sans }),
+  });
+  explorer.openingName = result.opening || "Opening not identified";
+}
+
+function renderOpeningExplorer() {
+  const explorer = state.openingExplorer;
+  if (!explorer || !els.openingExplorerMount) return;
+  els.openingExplorerName.textContent = explorer.openingName || "Opening not identified";
+  els.openingExplorerPly.textContent = explorer.selected_ply ? `${explorer.selected_ply} ply` : "Start";
+  els.openingExplorerMount.innerHTML = renderBoardComponent({
+    id: "openingExplorer",
+    mode: "opening_explorer",
+    title: "Board",
+    startingFen: explorer.starting_fen || STARTING_FEN,
+    positions: explorer.move_history || [],
+    selectedPly: explorer.selected_ply || 0,
+    orientation: state.boardOrientations.openingExplorer,
+    emptyText: "Tap moves to identify the opening.",
+    includeTimeline: true,
+    includeBoardActions: true,
+    allowInteraction: true,
+    timelineAttribute: "data-opening-ply",
+    statusHtml: `
+      <div class="analysis-status-grid">
+        <div>
+          <span class="metric-label">Turn</span>
+          <strong>${escapeHtml(capitalize(explorer.turn || "white"))}</strong>
+        </div>
+        <div>
+          <span class="metric-label">Position</span>
+          <strong>${escapeHtml(positionStatusText(explorer))}</strong>
+        </div>
+      </div>
+    `,
+  });
+  updateOpeningExplorer();
+  bindOpeningExplorerInteractions();
+}
+
+function updateOpeningExplorer() {
+  const explorer = state.openingExplorer;
+  if (!explorer) return;
+  const selected = (explorer.positions || []).find((position) => Number(position.ply) === Number(explorer.selected_ply));
+  updateBoardComponent({
+    id: "openingExplorer",
+    fen: explorer.fen,
+    selected,
+    positions: explorer.move_history || [],
+    selectedPly: explorer.selected_ply || 0,
+    orientation: state.boardOrientations.openingExplorer,
+    allowInteraction: true,
+    selectedSquare: explorer.selectedSquare,
+    legalMoves: explorer.legal_moves || [],
+  });
+  document.querySelectorAll("[data-opening-ply]").forEach((node) => {
+    node.classList.toggle("selected", Number(node.dataset.openingPly) === Number(explorer.selected_ply));
+  });
+  const indicator = document.querySelector('[data-board-indicator="openingExplorer"]');
+  if (indicator) indicator.textContent = selected?.ply ? moveLabel(selected) : "Start";
+  const current = document.querySelector('[data-board-current="openingExplorer"]');
+  if (current) {
+    current.innerHTML = `
+      <div class="stat-title">${selected?.ply ? escapeHtml(moveLabel(selected)) : "Starting position"}</div>
+      <div class="stat-subtitle">${escapeHtml(positionStatusText(explorer))}</div>
+    `;
+  }
+}
+
+function bindOpeningExplorerInteractions() {
+  document.querySelectorAll('[data-board-id="openingExplorer"][data-board-nav]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      await navigateOpeningExplorer(button.dataset.boardNav);
+    });
+  });
+  document.querySelectorAll('[data-board-id="openingExplorer"][data-board-action]').forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (button.dataset.boardAction === "reset") {
+        await resetOpeningExplorer();
+      } else if (button.dataset.boardAction === "flip") {
+        state.boardOrientations.openingExplorer = state.boardOrientations.openingExplorer === "white" ? "black" : "white";
+        updateOpeningExplorer();
+      }
+    });
+  });
+  document.querySelectorAll("[data-opening-ply]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      await selectOpeningPly(Number(node.dataset.openingPly));
+    });
+  });
+  document.querySelector('[data-board-surface="openingExplorer"]')?.addEventListener("click", async (event) => {
+    const square = event.target.closest("[data-board-square]")?.dataset.boardSquare;
+    if (square) {
+      await handleOpeningSquare(square);
+    }
+  });
+}
+
+async function navigateOpeningExplorer(action) {
+  const explorer = state.openingExplorer;
+  if (!explorer) return;
+  const maxPly = Math.max(0, ...(explorer.move_history || []).map((move) => Number(move.ply) || 0));
+  const current = Number(explorer.selected_ply) || 0;
+  const next = action === "start"
+    ? 0
+    : action === "end"
+      ? maxPly
+      : action === "prev"
+        ? Math.max(0, current - 1)
+        : action === "next"
+          ? Math.min(maxPly, current + 1)
+          : current;
+  await selectOpeningPly(next);
+}
+
+async function selectOpeningPly(ply) {
+  const explorer = state.openingExplorer;
+  if (!explorer) return;
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({
+      moves: explorer.moves || [],
+      starting_fen: explorer.starting_fen || STARTING_FEN,
+      selected_ply: Math.max(0, Number(ply) || 0),
+    }),
+  });
+  applyOpeningExplorerWorkspace(workspace);
+  await refreshOpeningName();
+  renderOpeningExplorer();
+}
+
+async function resetOpeningExplorer() {
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
+  });
+  applyOpeningExplorerWorkspace(workspace, "Opening not identified");
+  renderOpeningExplorer();
+}
+
+async function handleOpeningSquare(square) {
+  const explorer = state.openingExplorer;
+  if (!explorer) return;
+  const selected = explorer.selectedSquare;
+  const clickedPiece = pieceAt(explorer.fen, square);
+  const turnColor = explorer.turn || "white";
+  if (!selected) {
+    if (pieceBelongsToTurn(clickedPiece, turnColor)) {
+      explorer.selectedSquare = square;
+      updateOpeningExplorer();
+    }
+    return;
+  }
+
+  const legal = legalMoveForSquares(selected, square, explorer.legal_moves || []);
+  if (legal) {
+    const workspace = await api("/api/board/move", {
+      method: "POST",
+      body: JSON.stringify({
+        move: legal.uci,
+        moves: explorer.moves || [],
+        starting_fen: explorer.starting_fen || STARTING_FEN,
+        selected_ply: explorer.selected_ply || 0,
+      }),
+    });
+    applyOpeningExplorerWorkspace(workspace);
+    await refreshOpeningName();
+    renderOpeningExplorer();
+    return;
+  }
+
+  if (pieceBelongsToTurn(clickedPiece, turnColor)) {
+    explorer.selectedSquare = square;
+  } else {
+    explorer.selectedSquare = null;
+  }
+  updateOpeningExplorer();
+}
+
 function defaultSelectedPly(moves) {
   const analyzed = [...moves].reverse().find((move) => move.eval_after_display_cp != null);
   return analyzed ? Number(analyzed.ply) : Number(moves[0]?.ply || 0);
@@ -1289,26 +1506,40 @@ async function importGames() {
   setView("games");
 }
 
-async function syncChessCom() {
-  const username = els.chesscomUsername.value.trim();
+async function syncChessCom(options = {}) {
+  const username = String(options.username || els.chesscomUsername.value || "").trim();
   if (!username) {
     showStatus("Enter a Chess.com username.");
     return;
   }
-  const limit = Math.max(1, Math.min(240, Number(els.syncLimit.value) || 3));
-  showStatus("Syncing Chess.com archives. Large months can take a little while.", 0);
+  const days = Math.max(1, Math.min(365, Number(els.syncLimit.value) || state.activeProfile?.chesscom_sync_days || 7));
+  showStatus(options.auto ? `Refreshing and syncing ${username}.` : `Syncing the last ${days} days from Chess.com.`, 0);
   const result = await api("/api/chesscom/sync", {
     method: "POST",
     body: JSON.stringify({
       username,
-      limit,
+      days,
       force: els.syncForce.checked,
       profile_id: Number(state.activeProfile.id),
     }),
   });
+  await rememberSyncPreferences(username, days);
   showStatus(`Synced ${result.archives} archives: ${result.imported} new, ${result.duplicates} duplicates.`);
   await loadAll();
-  setView("games");
+  if (!options.auto) setView("games");
+}
+
+async function rememberSyncPreferences(username, days) {
+  if (!state.activeProfile?.id) return;
+  const profile = await api(`/api/profiles/${state.activeProfile.id}/sync-preferences`, {
+    method: "PUT",
+    body: JSON.stringify({
+      chesscom_username: username,
+      chesscom_sync_days: days,
+    }),
+  });
+  state.activeProfile = profile;
+  localStorage.setItem("activeProfileId", String(profile.id));
 }
 
 function renderSyncHistory() {
@@ -1493,11 +1724,19 @@ els.tabs.forEach((tab) => {
       await openBlankAnalysisBoard();
       return;
     }
+    if (tab.dataset.view === "openings") {
+      await ensureOpeningExplorer();
+    }
     setView(tab.dataset.view);
   });
 });
 
 els.refreshButton.addEventListener("click", async () => {
+  const username = (els.chesscomUsername.value || state.activeProfile?.chesscom_username || "").trim();
+  if (username) {
+    await syncChessCom({ username, auto: true });
+    return;
+  }
   await loadAll();
   showStatus("Refreshed.");
 });
@@ -1527,6 +1766,26 @@ els.syncButton.addEventListener("click", async () => {
     await syncChessCom();
   } catch (error) {
     showStatus(error.message, 10000);
+  }
+});
+
+els.syncLimit.addEventListener("change", async () => {
+  try {
+    await rememberSyncPreferences(els.chesscomUsername.value.trim(), Number(els.syncLimit.value) || 7);
+    showStatus("Sync window saved.");
+  } catch (error) {
+    showStatus(error.message, 8000);
+  }
+});
+
+els.chesscomUsername.addEventListener("change", async () => {
+  const username = els.chesscomUsername.value.trim();
+  if (!username) return;
+  try {
+    await rememberSyncPreferences(username, Number(els.syncLimit.value) || 7);
+    showStatus("Chess.com username saved.");
+  } catch (error) {
+    showStatus(error.message, 8000);
   }
 });
 

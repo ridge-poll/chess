@@ -6,6 +6,8 @@ from app.models import ParsedMove
 
 
 OPENING_PATTERNS: list[tuple[tuple[str, ...], str]] = [
+    (("e4",), "King's Pawn Opening"),
+    (("e4", "c5", "Nf3", "Nc6"), "Sicilian Defense — Old Sicilian Variation"),
     (("e4", "c5"), "Sicilian Defense"),
     (("e4", "e6"), "French Defense"),
     (("e4", "e5", "Nf3", "Nc6", "Bb5"), "Ruy Lopez"),
@@ -40,15 +42,24 @@ def detect_opening(
     if url_opening:
         return url_opening
 
-    sans = tuple(move.san.replace("+", "").replace("#", "") for move in moves[:8])
+    sans = tuple(move.san for move in moves[:8])
+    return detect_opening_from_san(sans)
+
+
+def detect_opening_from_san(sans: tuple[str, ...] | list[str]) -> str | None:
+    normalized_sans = tuple(_normalize_san(san) for san in sans[:8])
     best_match: tuple[str, ...] | None = None
     best_name: str | None = None
     for pattern, name in OPENING_PATTERNS:
-        if len(sans) >= len(pattern) and sans[: len(pattern)] == pattern:
+        if len(normalized_sans) >= len(pattern) and normalized_sans[: len(pattern)] == pattern:
             if best_match is None or len(pattern) > len(best_match):
                 best_match = pattern
                 best_name = name
     return best_name
+
+
+def _normalize_san(san: str) -> str:
+    return san.replace("+", "").replace("#", "")
 
 
 def _opening_from_eco_url(eco_url: str | None) -> str | None:

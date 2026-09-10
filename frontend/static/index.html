@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=17" />
-    <link rel="icon" href="/static/icon.svg?v=17" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=17" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=18" />
+    <link rel="icon" href="/static/icon.svg?v=18" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css?v=18" />
   </head>
   <body>
     <div id="app">
@@ -124,8 +124,8 @@
             <input id="chesscomUsername" type="text" autocomplete="username" placeholder="Chess.com username" />
             <div class="sync-options">
               <label>
-                <span>Months</span>
-                <input id="syncLimit" type="number" min="1" max="240" value="3" />
+                <span>Sync Days</span>
+                <input id="syncLimit" type="number" min="1" max="365" value="7" />
               </label>
               <label class="checkbox-row">
                 <input id="syncForce" type="checkbox" />
@@ -189,6 +189,16 @@
         </section>
 
         <section class="view" id="openingsView">
+          <section class="opening-explorer-shell">
+            <div class="opening-explorer-heading">
+              <div>
+                <p class="eyebrow">Opening Explorer</p>
+                <h2 id="openingExplorerName">Opening not identified</h2>
+              </div>
+              <span class="pill" id="openingExplorerPly">Start</span>
+            </div>
+            <div id="openingExplorerMount"></div>
+          </section>
           <section class="panel filter-panel">
             <div class="panel-heading">
               <h2>Openings</h2>
@@ -239,6 +249,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=17" type="module"></script>
+    <script src="/static/app.js?v=18" type="module"></script>
   </body>
 </html>

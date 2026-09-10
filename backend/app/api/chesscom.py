@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api/chesscom", tags=["chesscom"])
 
 class ChessComSyncPayload(BaseModel):
     username: str
-    limit: Optional[int] = 3
+    limit: Optional[int] = None
+    days: Optional[int] = 7
     force: bool = False
     profile_id: Optional[int] = None
 
@@ -24,6 +25,7 @@ async def sync(payload: ChessComSyncPayload) -> dict[str, object]:
             SyncOptions(
                 username=payload.username,
                 limit=payload.limit,
+                days=payload.days,
                 force=payload.force,
                 profile_id=payload.profile_id,
             )

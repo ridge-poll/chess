@@ -6,7 +6,13 @@ import app.db as db
 from app.services.games import dashboard, list_games
 from app.services.imports import import_pgn_text
 from app.services.opening_stats import opening_stats
-from app.services.profiles import create_profile, get_active_profile, list_profiles, set_active_profile
+from app.services.profiles import (
+    create_profile,
+    get_active_profile,
+    list_profiles,
+    set_active_profile,
+    update_sync_preferences,
+)
 
 
 SICILIAN_PGN = """
@@ -120,3 +126,20 @@ def test_existing_games_migrate_to_default_profile(tmp_path: Path, monkeypatch) 
     assert profiles[0]["name"] == "Ridge"
     assert len(games) == 1
     assert games[0]["profile_id"] == profiles[0]["id"]
+
+
+def test_profile_sync_preferences_are_profile_specific(tmp_path: Path, monkeypatch) -> None:
+    database_path = tmp_path / "test.sqlite3"
+    monkeypatch.setattr(db, "settings", config.Settings(database_path=database_path))
+    db.init_db(database_path)
+    profile_a = get_active_profile()
+    profile_b = create_profile("Second")
+
+    update_sync_preferences(int(profile_a["id"]), "RidgePoll1", 14)
+    update_sync_preferences(int(profile_b["id"]), "OtherPlayer", 30)
+    profiles = {profile["name"]: profile for profile in list_profiles()}
+
+    assert profiles["Ridge"]["chesscom_username"] == "ridgepoll1"
+    assert profiles["Ridge"]["chesscom_sync_days"] == 14
+    assert profiles["Second"]["chesscom_username"] == "otherplayer"
+    assert profiles["Second"]["chesscom_sync_days"] == 30

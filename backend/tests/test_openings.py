@@ -2,6 +2,7 @@ from pathlib import Path
 
 import app.config as config
 import app.db as db
+from app.pgn.openings import detect_opening_from_san
 from app.services.imports import import_pgn_text
 from app.services.opening_stats import opening_stats
 
@@ -43,3 +44,10 @@ def test_detects_openings_and_reports_opening_stats(tmp_path: Path, monkeypatch)
     assert by_name["Sicilian Defense"]["games"] == 1
     assert by_name["Sicilian Defense"]["win_pct"] == 100.0
     assert by_name["French Defense"]["win_pct"] == 100.0
+
+
+def test_live_opening_detection_gets_more_specific() -> None:
+    assert detect_opening_from_san(["e4"]) == "King's Pawn Opening"
+    assert detect_opening_from_san(["e4", "c5"]) == "Sicilian Defense"
+    assert detect_opening_from_san(["e4", "c5", "Nf3", "Nc6"]) == "Sicilian Defense — Old Sicilian Variation"
+    assert detect_opening_from_san(["h4"]) is None
