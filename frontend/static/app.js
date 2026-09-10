@@ -48,6 +48,7 @@ const els = {
   views: {
     home: document.querySelector("#homeView"),
     openings: document.querySelector("#openingsView"),
+    openingExplorer: document.querySelector("#openingExplorerView"),
     games: document.querySelector("#gamesView"),
     insights: document.querySelector("#insightsView"),
     more: document.querySelector("#moreView"),
@@ -69,6 +70,7 @@ const els = {
   openingExplorerMount: document.querySelector("#openingExplorerMount"),
   openingExplorerName: document.querySelector("#openingExplorerName"),
   openingExplorerPly: document.querySelector("#openingExplorerPly"),
+  startOpeningExplorerButton: document.querySelector("#startOpeningExplorerButton"),
   importButton: document.querySelector("#importButton"),
   fileInput: document.querySelector("#fileInput"),
   pgnInput: document.querySelector("#pgnInput"),
@@ -137,11 +139,12 @@ function setView(view) {
 }
 
 function isWorkspaceView(view) {
-  return view === "analysis" || view === "openings";
+  return view === "analysis" || view === "openingExplorer";
 }
 
 function primaryViewFor(view) {
   if (view === "detail" || view === "analysis") return "games";
+  if (view === "openingExplorer") return "openings";
   return view;
 }
 
@@ -149,6 +152,7 @@ function pageTitleFor(view) {
   return {
     home: "Home",
     openings: "Openings",
+    openingExplorer: "Opening Explorer",
     games: "Games",
     insights: "Insights",
     more: "More",
@@ -1810,11 +1814,13 @@ if ("serviceWorker" in navigator) {
 
 els.navButtons.forEach((button) => {
   button.addEventListener("click", async () => {
-    if (button.dataset.view === "openings") {
-      await ensureOpeningExplorer();
-    }
     setView(button.dataset.view);
   });
+});
+
+els.startOpeningExplorerButton.addEventListener("click", async () => {
+  await ensureOpeningExplorer();
+  setView("openingExplorer");
 });
 
 els.refreshButton.addEventListener("click", async () => {
@@ -1976,7 +1982,7 @@ els.gameList.addEventListener("keydown", async (event) => {
 
 els.backToGames.addEventListener("click", () => setView("games"));
 
-els.backFromOpening.addEventListener("click", () => setView("home"));
+els.backFromOpening.addEventListener("click", () => setView("openings"));
 
 els.backFromAnalysis.addEventListener("click", () => {
   if (state.selectedGameId) {

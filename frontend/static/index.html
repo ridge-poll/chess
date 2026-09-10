@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=20" />
-    <link rel="icon" href="/static/icon.svg?v=20" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=20" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=21" />
+    <link rel="icon" href="/static/icon.svg?v=21" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css?v=21" />
   </head>
   <body>
     <div id="app">
@@ -63,17 +63,14 @@
           </section>
         </section>
 
-        <section class="view board-workspace-view" id="openingsView">
-          <section class="opening-explorer-shell">
-            <div class="opening-explorer-heading">
-              <button class="text-button workspace-back-button" id="backFromOpening">&lt; Home</button>
-              <div>
-                <p class="eyebrow">Opening Explorer</p>
-                <h2 id="openingExplorerName">Opening not identified</h2>
-              </div>
-              <span class="pill" id="openingExplorerPly">Start</span>
+        <section class="view" id="openingsView">
+          <section class="opening-hero">
+            <div>
+              <p class="eyebrow">Repertoire</p>
+              <h2>Openings</h2>
+              <p class="muted-copy">Review your opening results or enter the board workspace to explore lines.</p>
             </div>
-            <div id="openingExplorerMount"></div>
+            <button id="startOpeningExplorerButton" class="primary">Explorer</button>
           </section>
           <section class="panel filter-panel">
             <div class="panel-heading">
@@ -90,6 +87,20 @@
             </label>
           </section>
           <div id="openingStatsList" class="opening-stats-list"></div>
+        </section>
+
+        <section class="view board-workspace-view" id="openingExplorerView">
+          <section class="opening-explorer-shell">
+            <div class="opening-explorer-heading">
+              <button class="text-button workspace-back-button" id="backFromOpening">&lt; Openings</button>
+              <div>
+                <p class="eyebrow">Opening Explorer</p>
+                <h2 id="openingExplorerName">Opening not identified</h2>
+              </div>
+              <span class="pill" id="openingExplorerPly">Start</span>
+            </div>
+            <div id="openingExplorerMount"></div>
+          </section>
         </section>
 
         <section class="view" id="gamesView">
@@ -289,6 +300,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=20" type="module"></script>
+    <script src="/static/app.js?v=21" type="module"></script>
   </body>
 </html>

@@ -574,6 +574,30 @@ input[type="number"] {
   gap: 10px;
 }
 
+.opening-hero {
+  display: grid;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.opening-hero h2 {
+  margin-bottom: 4px;
+}
+
+.muted-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.opening-hero .primary {
+  width: 100%;
+}
+
 .opening-explorer-shell {
   margin-bottom: 14px;
   padding: 14px;
@@ -877,7 +901,7 @@ input[type="number"] {
   grid-template-rows: auto 1fr;
   height: 100dvh;
   overflow: hidden;
-  padding: 0 max(12px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  padding: 0 max(8px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
 }
 
 .board-workspace-view .opening-explorer-shell,
@@ -896,7 +920,15 @@ input[type="number"] {
 
 .board-workspace-view .opening-explorer-heading {
   align-items: center;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   margin-bottom: 8px;
+}
+
+.board-workspace-view .opening-explorer-heading h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-back-button {
@@ -921,7 +953,7 @@ input[type="number"] {
 }
 
 .board-workspace-view .chessboard-wrap {
-  width: min(100%, 54dvh, 560px);
+  width: min(100%, calc(100dvh - 216px), 560px);
 }
 
 .board-workspace-view .explorer-side {
@@ -937,6 +969,41 @@ input[type="number"] {
 .board-workspace-view .move-strip {
   max-height: 96px;
   overflow: auto;
+}
+
+@media (max-width: 719px) {
+  .board-workspace-view .chessboard-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "board";
+    gap: 0;
+  }
+
+  .board-workspace-view .board-rank-labels,
+  .board-workspace-view .board-file-labels {
+    display: none;
+  }
+
+  .board-workspace-view .opening-explorer-heading {
+    gap: 8px;
+  }
+
+  .board-workspace-view .opening-explorer-heading h2 {
+    font-size: 1.02rem;
+  }
+
+  .board-workspace-view .opening-explorer-heading .pill {
+    padding: 5px 8px;
+  }
+
+  .board-workspace-view .explorer-controls,
+  .board-workspace-view .board-extra-controls {
+    gap: 6px;
+  }
+
+  .board-workspace-view .nav-button,
+  .board-workspace-view .board-extra-controls button {
+    min-height: 38px;
+  }
 }
 
 .chessboard-wrap {
