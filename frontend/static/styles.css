@@ -66,7 +66,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
   background: var(--bg);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -109,7 +109,7 @@ button.danger-button {
 #app {
   width: 100%;
   margin: 0;
-  padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left));
+  padding: 16px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
 }
 
 .topbar {
@@ -117,14 +117,7 @@ button.danger-button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 0 8px;
-}
-
-.top-actions {
-  display: grid;
-  grid-template-columns: minmax(112px, 1fr) 44px 44px 44px;
-  gap: 6px;
-  align-items: end;
+  padding: 10px 0 16px;
 }
 
 .profile-select-label {
@@ -137,7 +130,6 @@ button.danger-button {
 
 .profile-select-label select {
   min-height: 44px;
-  max-width: 180px;
 }
 
 .eyebrow {
@@ -178,30 +170,6 @@ h2 {
   display: block;
 }
 
-.tabs {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 8px 0 12px;
-  background: var(--bg);
-}
-
-.tab {
-  flex: 1 0 auto;
-  min-width: 72px;
-  color: var(--muted);
-  font-weight: 700;
-}
-
-.tab.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--surface);
-}
-
 .view {
   display: none;
 }
@@ -211,12 +179,54 @@ h2 {
 }
 
 .status {
-  margin: 8px 0 12px;
+  margin: 0 0 12px;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--status-bg);
   color: var(--status-ink);
+}
+
+.bottom-nav {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.bottom-nav-button {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 58px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.bottom-nav-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.bottom-nav-button.active {
+  color: var(--accent);
+}
+
+.bottom-nav-button.active svg {
+  stroke-width: 2.4;
 }
 
 .metrics-grid {
@@ -353,6 +363,24 @@ h2 {
 .import-panel {
   display: grid;
   gap: 12px;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.settings-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .active-profile-note {

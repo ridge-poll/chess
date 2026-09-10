@@ -12,47 +12,23 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=18" />
-    <link rel="icon" href="/static/icon.svg?v=18" type="image/svg+xml" />
-    <link rel="stylesheet" href="/static/styles.css?v=18" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=19" />
+    <link rel="icon" href="/static/icon.svg?v=19" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css?v=19" />
   </head>
   <body>
     <div id="app">
       <header class="topbar">
         <div>
           <p class="eyebrow">Chess Analytics</p>
-          <h1>Performance</h1>
-        </div>
-        <div class="top-actions">
-          <label class="profile-select-label">
-            <span>Profile</span>
-            <select id="profileSelect" aria-label="Active profile"></select>
-          </label>
-          <button class="icon-button" id="themeToggleButton" aria-label="Toggle dark mode">◐</button>
-          <button class="icon-button" id="createProfileButton" aria-label="Create profile">+</button>
-          <button class="icon-button" id="refreshButton" aria-label="Refresh" title="Refresh">
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
-              <path d="M20 6v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-              <path d="M4 18v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-              <path d="M18.3 9A7 7 0 0 0 6.6 6.4L4 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-              <path d="M5.7 15A7 7 0 0 0 17.4 17.6L20 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-          </button>
+          <h1 id="pageTitle">Home</h1>
         </div>
       </header>
 
       <main>
         <section id="status" class="status" hidden></section>
 
-        <nav class="tabs" aria-label="Views">
-          <button class="tab active" data-view="dashboard">Overview</button>
-          <button class="tab" data-view="import">Import</button>
-          <button class="tab" data-view="openings">Openings</button>
-          <button class="tab" data-view="games">Games</button>
-          <button class="tab" data-view="analysis">Analysis</button>
-        </nav>
-
-        <section class="view active" id="dashboardView">
+        <section class="view active" id="homeView">
           <div class="metrics-grid" id="metricsGrid"></div>
           <section class="panel">
             <div class="panel-heading">
@@ -69,12 +45,6 @@
           </section>
           <section class="panel">
             <div class="panel-heading">
-              <h2>Coach Notes</h2>
-            </div>
-            <div id="insightList" class="stack"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
               <h2>Trend</h2>
             </div>
             <div class="chart" id="trendChart"></div>
@@ -87,54 +57,38 @@
           </section>
           <section class="panel">
             <div class="panel-heading">
-              <h2>Game Phases</h2>
-            </div>
-            <div id="phaseList" class="stack"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Mistakes</h2>
-            </div>
-            <div id="mistakeList" class="stack"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
               <h2>Openings</h2>
             </div>
             <div id="openingList" class="stack"></div>
           </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Opening Edges</h2>
-            </div>
-            <div id="openingEdgeList" class="stack"></div>
-          </section>
         </section>
 
-        <section class="view" id="importView">
-          <section class="panel import-panel">
-            <h2>Import PGN</h2>
-            <div class="active-profile-note" id="activeImportProfile">Profile: -</div>
-            <input id="fileInput" type="file" accept=".pgn,text/plain" multiple />
-            <textarea id="pgnInput" rows="10" placeholder="Paste one or more PGNs"></textarea>
-            <button class="primary" id="importButton">Import Games</button>
-          </section>
-          <section class="panel import-panel">
-            <h2>Chess.com Sync</h2>
-            <input id="chesscomUsername" type="text" autocomplete="username" placeholder="Chess.com username" />
-            <div class="sync-options">
-              <label>
-                <span>Sync Days</span>
-                <input id="syncLimit" type="number" min="1" max="365" value="7" />
-              </label>
-              <label class="checkbox-row">
-                <input id="syncForce" type="checkbox" />
-                <span>Force re-sync</span>
-              </label>
+        <section class="view" id="openingsView">
+          <section class="opening-explorer-shell">
+            <div class="opening-explorer-heading">
+              <div>
+                <p class="eyebrow">Opening Explorer</p>
+                <h2 id="openingExplorerName">Opening not identified</h2>
+              </div>
+              <span class="pill" id="openingExplorerPly">Start</span>
             </div>
-            <button class="primary" id="syncButton">Sync Archives</button>
-            <div id="syncHistory" class="stack"></div>
+            <div id="openingExplorerMount"></div>
           </section>
+          <section class="panel filter-panel">
+            <div class="panel-heading">
+              <h2>Openings</h2>
+            </div>
+            <label class="full-label">
+              <span>Sort By</span>
+              <select id="openingSortSelect" aria-label="Sort openings">
+                <option value="most_played">Most Played</option>
+                <option value="highest_win_rate">Highest Win Rate</option>
+                <option value="highest_accuracy">Highest Accuracy</option>
+                <option value="lowest_accuracy">Lowest Accuracy</option>
+              </select>
+            </label>
+          </section>
+          <div id="openingStatsList" class="opening-stats-list"></div>
         </section>
 
         <section class="view" id="gamesView">
@@ -188,32 +142,85 @@
           <div id="gameList" class="game-list"></div>
         </section>
 
-        <section class="view" id="openingsView">
-          <section class="opening-explorer-shell">
-            <div class="opening-explorer-heading">
-              <div>
-                <p class="eyebrow">Opening Explorer</p>
-                <h2 id="openingExplorerName">Opening not identified</h2>
-              </div>
-              <span class="pill" id="openingExplorerPly">Start</span>
-            </div>
-            <div id="openingExplorerMount"></div>
-          </section>
-          <section class="panel filter-panel">
+        <section class="view" id="insightsView">
+          <section class="panel">
             <div class="panel-heading">
-              <h2>Openings</h2>
+              <h2>Coach Notes</h2>
             </div>
-            <label class="full-label">
-              <span>Sort By</span>
-              <select id="openingSortSelect" aria-label="Sort openings">
-                <option value="most_played">Most Played</option>
-                <option value="highest_win_rate">Highest Win Rate</option>
-                <option value="highest_accuracy">Highest Accuracy</option>
-                <option value="lowest_accuracy">Lowest Accuracy</option>
-              </select>
+            <div id="insightList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Game Phases</h2>
+            </div>
+            <div id="phaseList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Mistakes</h2>
+            </div>
+            <div id="mistakeList" class="stack"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading">
+              <h2>Opening Edges</h2>
+            </div>
+            <div id="openingEdgeList" class="stack"></div>
+          </section>
+        </section>
+
+        <section class="view" id="moreView">
+          <section class="panel settings-panel">
+            <div class="panel-heading">
+              <h2>Profile</h2>
+              <button class="icon-button" id="createProfileButton" aria-label="Create profile">+</button>
+            </div>
+            <label class="profile-select-label">
+              <span>Active Profile</span>
+              <select id="profileSelect" aria-label="Active profile"></select>
             </label>
           </section>
-          <div id="openingStatsList" class="opening-stats-list"></div>
+          <section class="panel settings-panel">
+            <div class="panel-heading">
+              <h2>App</h2>
+            </div>
+            <div class="settings-actions">
+              <button class="secondary-button" id="themeToggleButton" aria-label="Toggle dark mode">Toggle Theme</button>
+              <button class="secondary-button" id="refreshButton" aria-label="Refresh and sync" title="Refresh">
+                <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
+                  <path d="M20 6v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <path d="M4 18v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <path d="M18.3 9A7 7 0 0 0 6.6 6.4L4 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                  <path d="M5.7 15A7 7 0 0 0 17.4 17.6L20 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+                <span>Refresh / Sync</span>
+              </button>
+              <button id="moreAnalysisButton" class="secondary-button">Analysis Board</button>
+            </div>
+          </section>
+          <section class="panel import-panel">
+            <h2>Import PGN</h2>
+            <div class="active-profile-note" id="activeImportProfile">Profile: -</div>
+            <input id="fileInput" type="file" accept=".pgn,text/plain" multiple />
+            <textarea id="pgnInput" rows="10" placeholder="Paste one or more PGNs"></textarea>
+            <button class="primary" id="importButton">Import Games</button>
+          </section>
+          <section class="panel import-panel">
+            <h2>Chess.com Sync</h2>
+            <input id="chesscomUsername" type="text" autocomplete="username" placeholder="Chess.com username" />
+            <div class="sync-options">
+              <label>
+                <span>Sync Days</span>
+                <input id="syncLimit" type="number" min="1" max="365" value="7" />
+              </label>
+              <label class="checkbox-row">
+                <input id="syncForce" type="checkbox" />
+                <span>Force re-sync</span>
+              </label>
+            </div>
+            <button class="primary" id="syncButton">Sync Archives</button>
+            <div id="syncHistory" class="stack"></div>
+          </section>
         </section>
 
         <section class="view" id="detailView">
@@ -229,6 +236,28 @@
         </section>
       </main>
     </div>
+    <nav class="bottom-nav" aria-label="Primary">
+      <button class="bottom-nav-button active" data-view="home" aria-label="Home">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5V20h-5v-6H9v6H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>
+        <span>Home</span>
+      </button>
+      <button class="bottom-nav-button" data-view="openings" aria-label="Openings">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 5.5A3.5 3.5 0 0 1 8.5 2H20v17H8.5A3.5 3.5 0 0 0 5 22z" fill="none" stroke="currentColor" stroke-width="2"></path><path d="M5 5.5V22M9 6h7M9 10h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+        <span>Openings</span>
+      </button>
+      <button class="bottom-nav-button" data-view="games" aria-label="Games">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 4h8l1 5 3 3v8H4v-8l3-3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path><path d="M8 9h8M9 14h6M9 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+        <span>Games</span>
+      </button>
+      <button class="bottom-nav-button" data-view="insights" aria-label="Insights">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16l3-4 3 2 4-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span>Insights</span>
+      </button>
+      <button class="bottom-nav-button" data-view="more" aria-label="More">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"></path></svg>
+        <span>More</span>
+      </button>
+    </nav>
     <div class="modal-backdrop" id="confirmModal" hidden>
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <h2 id="confirmTitle">Delete game?</h2>
@@ -249,6 +278,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=18" type="module"></script>
+    <script src="/static/app.js?v=19" type="module"></script>
   </body>
 </html>

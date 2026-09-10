@@ -9,7 +9,7 @@ const state = {
   profiles: [],
   activeProfile: null,
   openingSortBy: "most_played",
-  activeView: "dashboard",
+  activeView: "home",
   search: "",
   sortBy: "recent",
   timeFilter: "all",
@@ -33,6 +33,7 @@ const state = {
 
 const els = {
   status: document.querySelector("#status"),
+  pageTitle: document.querySelector("#pageTitle"),
   refreshButton: document.querySelector("#refreshButton"),
   themeToggleButton: document.querySelector("#themeToggleButton"),
   profileSelect: document.querySelector("#profileSelect"),
@@ -42,12 +43,13 @@ const els = {
   cancelProfileButton: document.querySelector("#cancelProfileButton"),
   saveProfileButton: document.querySelector("#saveProfileButton"),
   activeImportProfile: document.querySelector("#activeImportProfile"),
-  tabs: document.querySelectorAll(".tab"),
+  navButtons: document.querySelectorAll(".bottom-nav-button"),
   views: {
-    dashboard: document.querySelector("#dashboardView"),
-    import: document.querySelector("#importView"),
+    home: document.querySelector("#homeView"),
     openings: document.querySelector("#openingsView"),
     games: document.querySelector("#gamesView"),
+    insights: document.querySelector("#insightsView"),
+    more: document.querySelector("#moreView"),
     analysis: document.querySelector("#analysisView"),
     detail: document.querySelector("#detailView"),
   },
@@ -80,6 +82,7 @@ const els = {
   sortSelect: document.querySelector("#sortSelect"),
   analyzeAllButton: document.querySelector("#analyzeAllButton"),
   newAnalysisButton: document.querySelector("#newAnalysisButton"),
+  moreAnalysisButton: document.querySelector("#moreAnalysisButton"),
   depthInput: document.querySelector("#depthInput"),
   queueSummary: document.querySelector("#queueSummary"),
   jobList: document.querySelector("#jobList"),
@@ -120,9 +123,28 @@ function setView(view) {
   Object.entries(els.views).forEach(([key, node]) => {
     node.classList.toggle("active", key === view);
   });
-  els.tabs.forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.view === view);
+  const primaryView = primaryViewFor(view);
+  els.navButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === primaryView);
   });
+  if (els.pageTitle) els.pageTitle.textContent = pageTitleFor(view);
+}
+
+function primaryViewFor(view) {
+  if (view === "detail" || view === "analysis") return "games";
+  return view;
+}
+
+function pageTitleFor(view) {
+  return {
+    home: "Home",
+    openings: "Openings",
+    games: "Games",
+    insights: "Insights",
+    more: "More",
+    detail: "Game",
+    analysis: "Analysis",
+  }[view] || "Home";
 }
 
 async function loadAll() {
@@ -1623,6 +1645,7 @@ function perspectiveCp(cp, userColor) {
 function userColorForGame(game = {}) {
   if (game.player_color) return game.player_color;
   const candidates = [
+    state.activeProfile?.chesscom_username,
     state.dashboard?.player,
     state.activeProfile?.name,
     inferredPrimaryPlayer(),
@@ -1718,16 +1741,12 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/static/service-worker.js").catch(() => {});
 }
 
-els.tabs.forEach((tab) => {
-  tab.addEventListener("click", async () => {
-    if (tab.dataset.view === "analysis" && !state.analysisBoard) {
-      await openBlankAnalysisBoard();
-      return;
-    }
-    if (tab.dataset.view === "openings") {
+els.navButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (button.dataset.view === "openings") {
       await ensureOpeningExplorer();
     }
-    setView(tab.dataset.view);
+    setView(button.dataset.view);
   });
 });
 
@@ -1749,7 +1768,7 @@ els.themeToggleButton.addEventListener("click", () => {
 });
 
 function updateThemeButton() {
-  els.themeToggleButton.textContent = state.theme === "dark" ? "☀" : "◐";
+  els.themeToggleButton.textContent = state.theme === "dark" ? "Light Mode" : "Dark Mode";
   els.themeToggleButton.setAttribute("aria-label", state.theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
 }
 
@@ -1820,7 +1839,7 @@ els.profileSelect.addEventListener("change", async (event) => {
   localStorage.setItem("activeProfileId", String(profile.id));
   state.selectedGameId = null;
   state.selectedGame = null;
-  setView("dashboard");
+  setView("home");
   await loadAll();
 });
 
@@ -1848,7 +1867,7 @@ els.saveProfileButton.addEventListener("click", async () => {
     state.activeProfile = profile;
     localStorage.setItem("activeProfileId", String(profile.id));
     els.profileModal.hidden = true;
-    setView("dashboard");
+    setView("home");
     await loadAll();
     showStatus(`Switched to ${profile.name}.`);
   } catch (error) {
@@ -1894,6 +1913,10 @@ els.backFromAnalysis.addEventListener("click", () => {
 });
 
 els.newAnalysisButton.addEventListener("click", async () => {
+  await openBlankAnalysisBoard();
+});
+
+els.moreAnalysisButton.addEventListener("click", async () => {
   await openBlankAnalysisBoard();
 });
 
