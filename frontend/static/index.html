@@ -12,14 +12,14 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=25" />
-    <link rel="icon" href="/static/logo.png?v=25" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=25" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=26" />
+    <link rel="icon" href="/static/logo.png?v=26" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=26" />
   </head>
   <body>
     <div id="app">
       <header class="topbar">
-        <img class="app-logo" src="/static/logo.png?v=25" alt="" aria-hidden="true" />
+        <img class="app-logo" src="/static/logo.png?v=26" alt="" aria-hidden="true" />
         <div>
           <p class="eyebrow">Chess Analytics</p>
           <h1 id="pageTitle">Home</h1>
@@ -30,10 +30,59 @@
         <section id="status" class="status" hidden></section>
 
         <section class="view active" id="homeView">
-          <div class="metrics-grid" id="metricsGrid"></div>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Statistics</h2>
+          <section class="home-hero">
+            <div class="home-player">
+              <img class="home-logo" src="/static/logo.png?v=26" alt="" aria-hidden="true" />
+              <div>
+                <p class="eyebrow">Current Profile</p>
+                <h2 id="homePlayerName">Ridge</h2>
+              </div>
+            </div>
+            <div class="home-rating">
+              <span id="homeRating">Unrated</span>
+              <strong id="homeRatingDelta">No rating trend yet</strong>
+            </div>
+            <div class="home-scoreline" id="metricsGrid"></div>
+          </section>
+
+          <section class="home-section">
+            <div class="home-section-heading">
+              <span>Recent Form</span>
+              <strong id="homeRecentSummary">No games yet</strong>
+            </div>
+            <div class="result-strip" id="recentResultsStrip"></div>
+          </section>
+
+          <section class="home-section">
+            <div class="home-section-heading">
+              <span>Performance</span>
+              <strong id="homeAccuracyLabel">Accuracy pending</strong>
+            </div>
+            <div class="home-line-chart" id="trendChart"></div>
+          </section>
+
+          <section class="home-section">
+            <div class="home-section-heading">
+              <span>Rating</span>
+              <strong id="homeRatingLabel">PGN ratings</strong>
+            </div>
+            <div class="home-line-chart rating-chart" id="ratingChart"></div>
+          </section>
+
+          <section class="home-section">
+            <div class="home-section-heading">
+              <span>Repertoire</span>
+              <strong>Most played</strong>
+            </div>
+            <div id="openingList" class="opening-bars"></div>
+          </section>
+
+          <section class="home-insight" id="homeInsight"></section>
+
+          <section class="home-section compact-home-stats">
+            <div class="home-section-heading">
+              <span>Time Control</span>
+              <strong id="homeTimeLabel">Overall</strong>
             </div>
             <div class="segmented-control" id="statsTimeControl">
               <button class="segment active" data-stats-time="Overall">Overall</button>
@@ -42,25 +91,7 @@
               <button class="segment" data-stats-time="Rapid">Rapid</button>
               <button class="segment" data-stats-time="Classical">Classical</button>
             </div>
-            <div class="metrics-grid compact-metrics" id="timeStatsGrid"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Trend</h2>
-            </div>
-            <div class="chart" id="trendChart"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Rating</h2>
-            </div>
-            <div class="chart rating-chart" id="ratingChart"></div>
-          </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>Openings</h2>
-            </div>
-            <div id="openingList" class="stack"></div>
+            <div class="home-stat-row" id="timeStatsGrid"></div>
           </section>
         </section>
 
@@ -301,6 +332,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=25" type="module"></script>
+    <script src="/static/app.js?v=26" type="module"></script>
   </body>
 </html>

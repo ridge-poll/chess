@@ -62,6 +62,15 @@ const els = {
     detail: document.querySelector("#detailView"),
   },
   metricsGrid: document.querySelector("#metricsGrid"),
+  homePlayerName: document.querySelector("#homePlayerName"),
+  homeRating: document.querySelector("#homeRating"),
+  homeRatingDelta: document.querySelector("#homeRatingDelta"),
+  homeRatingLabel: document.querySelector("#homeRatingLabel"),
+  homeAccuracyLabel: document.querySelector("#homeAccuracyLabel"),
+  homeRecentSummary: document.querySelector("#homeRecentSummary"),
+  recentResultsStrip: document.querySelector("#recentResultsStrip"),
+  homeInsight: document.querySelector("#homeInsight"),
+  homeTimeLabel: document.querySelector("#homeTimeLabel"),
   statsTimeControl: document.querySelector("#statsTimeControl"),
   timeStatsGrid: document.querySelector("#timeStatsGrid"),
   insightList: document.querySelector("#insightList"),
@@ -253,27 +262,39 @@ function renderOpeningStats() {
 
 function renderDashboard() {
   const totals = state.dashboard?.totals || {};
+  const recentGames = state.dashboard?.recent_games || [];
+  const ratingTrend = state.dashboard?.rating_trend || [];
+  const currentRating = ratingTrend.length ? ratingTrend[ratingTrend.length - 1].rating : null;
+  const firstRating = ratingTrend.length ? ratingTrend[0].rating : null;
+  const ratingDelta = currentRating != null && firstRating != null ? Number(currentRating) - Number(firstRating) : null;
+  const playerName = state.dashboard?.player || state.activeProfile?.name || "Ridge";
+  const accuracyText = totals.accuracy == null ? "Analyze games" : `${totals.accuracy}% accuracy`;
+  if (els.homePlayerName) els.homePlayerName.textContent = playerName;
+  if (els.homeRating) els.homeRating.textContent = currentRating == null ? "Unrated" : String(currentRating);
+  if (els.homeRatingDelta) {
+    els.homeRatingDelta.textContent = ratingDelta == null
+      ? "No rating trend yet"
+      : `${ratingDelta >= 0 ? "+" : ""}${ratingDelta} recent`;
+  }
+  if (els.homeAccuracyLabel) els.homeAccuracyLabel.textContent = accuracyText;
+  renderRecentResults(recentGames);
+  renderHomeInsight(state.dashboard?.insights || [], totals);
   const metrics = [
     ["Games", totals.games ?? 0],
-    ["Analyzed", totals.analyzed_games ?? 0],
+    ["Record", `${totals.wins ?? 0}-${totals.losses ?? 0}-${totals.draws ?? 0}`],
     ["ACPL", formatNumber(totals.acpl)],
-    ["Accuracy", totals.accuracy == null ? "-" : `${totals.accuracy}%`],
-    ["Wins", totals.wins ?? 0],
-    ["Draws", totals.draws ?? 0],
-    ["Losses", totals.losses ?? 0],
-    ["Blunders", totals.blunders ?? 0],
   ];
   els.metricsGrid.innerHTML = metrics.map(([label, value]) => `
-    <article class="metric">
-      <div class="metric-label">${escapeHtml(label)}</div>
-      <div class="metric-value">${escapeHtml(String(value))}</div>
-    </article>
+    <div class="home-score-item">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+    </div>
   `).join("");
 
   renderTimeStats(state.dashboard?.time_control_stats || []);
   renderInsights(state.dashboard?.insights || []);
   renderTrend(state.dashboard?.trend || []);
-  renderRatingTrend(state.dashboard?.rating_trend || []);
+  renderRatingTrend(ratingTrend);
   renderPhases(state.dashboard?.phases || []);
   renderMistakes(state.dashboard?.mistake_breakdown || {});
   renderOpenings(state.dashboard?.openings || []);
@@ -286,6 +307,7 @@ function renderTimeStats(rows) {
     els.timeStatsGrid.innerHTML = "";
     return;
   }
+  if (els.homeTimeLabel) els.homeTimeLabel.textContent = selected.time_class || state.statsTime || "Overall";
   const metrics = [
     ["Games", selected.games ?? 0],
     ["W-L-D", `${selected.wins ?? 0}-${selected.losses ?? 0}-${selected.draws ?? 0}`],
@@ -293,14 +315,55 @@ function renderTimeStats(rows) {
     ["Avg Length", selected.average_game_length == null ? "-" : `${selected.average_game_length} moves`],
   ];
   els.timeStatsGrid.innerHTML = metrics.map(([label, value]) => `
-    <article class="metric compact-metric">
-      <div class="metric-label">${escapeHtml(label)}</div>
-      <div class="metric-value">${escapeHtml(String(value))}</div>
-    </article>
+    <div class="home-mini-stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value))}</strong>
+    </div>
   `).join("");
   els.statsTimeControl.querySelectorAll(".segment").forEach((button) => {
     button.classList.toggle("active", button.dataset.statsTime === state.statsTime);
   });
+}
+
+function renderRecentResults(games) {
+  if (!els.recentResultsStrip) return;
+  if (!games.length) {
+    els.recentResultsStrip.innerHTML = `<div class="stat-subtitle">Import or sync games to begin.</div>`;
+    if (els.homeRecentSummary) els.homeRecentSummary.textContent = "No games yet";
+    return;
+  }
+  const recent = games.slice(0, 14);
+  const wins = recent.filter((game) => gameResultWord(game) === "win").length;
+  const losses = recent.filter((game) => gameResultWord(game) === "loss").length;
+  const draws = recent.filter((game) => gameResultWord(game) === "draw").length;
+  if (els.homeRecentSummary) els.homeRecentSummary.textContent = `${wins}-${losses}-${draws} last ${recent.length}`;
+  els.recentResultsStrip.innerHTML = recent.map((game) => {
+    const result = gameResultWord(game);
+    return `
+      <button class="result-tile ${escapeHtml(result)}" data-game-id="${game.id}" title="${escapeHtml(opponentName(game))} · ${escapeHtml(displayResult(game.result))}">
+        ${escapeHtml(gameResultMark(game) || "?")}
+      </button>
+    `;
+  }).join("");
+}
+
+function renderHomeInsight(insights, totals) {
+  if (!els.homeInsight) return;
+  const insight = insights[0];
+  if (insight) {
+    els.homeInsight.innerHTML = `
+      <p class="eyebrow">Coach Note</p>
+      <strong>${escapeHtml(insight.title)}</strong>
+      <span>${escapeHtml(insight.body)}</span>
+    `;
+    return;
+  }
+  const games = totals.games ?? 0;
+  els.homeInsight.innerHTML = `
+    <p class="eyebrow">Coach Note</p>
+    <strong>${games ? "Analysis warming up" : "Start with a sync"}</strong>
+    <span>${games ? "Analyze a few games to surface your first recurring pattern." : "Import or sync games, then run analysis to build your chess portrait."}</span>
+  `;
 }
 
 
@@ -322,26 +385,59 @@ function renderTrend(rows) {
     els.trendChart.innerHTML = `<div class="stat-subtitle">Analyze games to see your accuracy trend.</div>`;
     return;
   }
-  const max = Math.max(...rows.map((row) => row.acpl || 0), 1);
-  els.trendChart.innerHTML = rows.map((row) => {
-    const height = Math.max(8, Math.round((row.acpl / max) * 100));
-    return `<div class="bar" title="Game ${row.game_id}: ${row.acpl} ACPL" style="height:${height}%"></div>`;
-  }).join("");
+  els.trendChart.innerHTML = renderMiniLineChart(
+    rows.map((row) => row.accuracy ?? (row.acpl == null ? null : Math.max(0, 100 - Number(row.acpl) / 3))),
+    { highGood: true, label: "Recent accuracy trend" },
+  );
 }
 
 function renderRatingTrend(rows) {
   if (!rows.length) {
+    if (els.homeRatingLabel) els.homeRatingLabel.textContent = "No ratings";
     els.ratingChart.innerHTML = `<div class="stat-subtitle">Rating appears when PGNs include ratings.</div>`;
     return;
   }
-  const ratings = rows.map((row) => row.rating || 0);
-  const min = Math.min(...ratings);
-  const max = Math.max(...ratings);
+  if (els.homeRatingLabel) {
+    const first = Number(rows[0].rating);
+    const last = Number(rows[rows.length - 1].rating);
+    els.homeRatingLabel.textContent = `${last >= first ? "+" : ""}${last - first}`;
+  }
+  els.ratingChart.innerHTML = renderMiniLineChart(rows.map((row) => row.rating), { highGood: true, label: "Recent rating trend" });
+}
+
+function renderMiniLineChart(values, options = {}) {
+  const points = values
+    .map((value, index) => ({ value: value == null ? null : Number(value), index }))
+    .filter((point) => Number.isFinite(point.value));
+  if (points.length < 2) {
+    return `<div class="stat-subtitle">More data needed for a trend.</div>`;
+  }
+  const width = 320;
+  const height = 116;
+  const pad = 10;
+  const min = Math.min(...points.map((point) => point.value));
+  const max = Math.max(...points.map((point) => point.value));
   const span = Math.max(1, max - min);
-  els.ratingChart.innerHTML = rows.map((row) => {
-    const height = Math.max(8, Math.round(((row.rating - min) / span) * 90) + 10);
-    return `<div class="bar rating-bar" title="Game ${row.game_id}: ${row.rating}" style="height:${height}%"></div>`;
-  }).join("");
+  const xFor = (index) => points.length === 1
+    ? width / 2
+    : pad + (index * (width - pad * 2)) / (points.length - 1);
+  const yFor = (value) => pad + ((max - value) * (height - pad * 2)) / span;
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index).toFixed(1)} ${yFor(point.value).toFixed(1)}`).join(" ");
+  const area = `${path} L ${xFor(points.length - 1).toFixed(1)} ${height - pad} L ${xFor(0).toFixed(1)} ${height - pad} Z`;
+  const last = points[points.length - 1].value;
+  const first = points[0].value;
+  const delta = last - first;
+  return `
+    <svg class="mini-line-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(options.label || "Trend chart")}">
+      <path class="mini-line-area" d="${area}"></path>
+      <path class="mini-line-path" d="${path}"></path>
+    </svg>
+    <div class="mini-chart-foot">
+      <span>${escapeHtml(formatNumber(first))}</span>
+      <strong>${delta >= 0 ? "+" : ""}${escapeHtml(formatNumber(delta))}</strong>
+      <span>${escapeHtml(formatNumber(last))}</span>
+    </div>
+  `;
 }
 
 function renderPhases(phases) {
@@ -385,15 +481,18 @@ function renderOpenings(openings) {
     els.openingList.innerHTML = `<div class="stat-subtitle">Imported games will appear here.</div>`;
     return;
   }
-  els.openingList.innerHTML = openings.map((opening) => `
-    <div class="stat-row">
+  const maxGames = Math.max(...openings.map((opening) => Number(opening.games) || 0), 1);
+  els.openingList.innerHTML = openings.slice(0, 5).map((opening) => {
+    const width = Math.max(8, Math.round(((Number(opening.games) || 0) / maxGames) * 100));
+    return `
+    <div class="opening-bar-row">
       <div>
         <div class="stat-title">${escapeHtml(opening.opening)}</div>
         <div class="stat-subtitle">${opening.games} games · ${Math.round((opening.score_rate || 0) * 100)}% score</div>
       </div>
-      <span class="pill">${formatNumber(opening.acpl)} ACPL</span>
+      <div class="opening-frequency" aria-hidden="true"><span style="width:${width}%"></span></div>
     </div>
-  `).join("");
+  `}).join("");
 }
 
 function renderOpeningEdges(summary) {
@@ -2138,6 +2237,12 @@ els.gameList.addEventListener("click", async (event) => {
   const card = event.target.closest("[data-game-id]");
   if (!card) return;
   await renderGameDetail(card.dataset.gameId);
+});
+
+els.recentResultsStrip.addEventListener("click", async (event) => {
+  const tile = event.target.closest("[data-game-id]");
+  if (!tile) return;
+  await renderGameDetail(tile.dataset.gameId);
 });
 
 els.gameList.addEventListener("keydown", async (event) => {
