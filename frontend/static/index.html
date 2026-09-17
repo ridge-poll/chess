@@ -12,14 +12,14 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=27" />
-    <link rel="icon" href="/static/logo.png?v=27" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=27" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=28" />
+    <link rel="icon" href="/static/logo.png?v=28" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=28" />
   </head>
   <body>
     <div id="app">
       <header class="topbar">
-        <img class="app-logo" src="/static/logo.png?v=26" alt="" aria-hidden="true" />
+        <img class="app-logo" src="/static/logo.png?v=28" alt="" aria-hidden="true" />
         <div>
           <p class="eyebrow">Chess Analytics</p>
           <h1 id="pageTitle">Home</h1>
@@ -32,7 +32,7 @@
         <section class="view active" id="homeView">
           <section class="home-hero">
             <div class="home-player">
-              <img class="home-logo" src="/static/logo.png?v=26" alt="" aria-hidden="true" />
+              <img class="home-logo" src="/static/logo.png?v=28" alt="" aria-hidden="true" />
               <div>
                 <p class="eyebrow">Current Profile</p>
                 <h2 id="homePlayerName">Ridge</h2>
@@ -96,23 +96,30 @@
         </section>
 
         <section class="view" id="openingsView">
-          <section class="opening-hero">
+          <section class="repertoire-entry-heading">
             <div>
               <p class="eyebrow">Repertoire</p>
-              <h2>Openings</h2>
-              <p class="muted-copy">Follow the lines you actually play and see where your repertoire branches.</p>
+              <h2>Choose your side</h2>
+              <p class="muted-copy">Explore the positions and continuations that shape your games.</p>
             </div>
-            <button id="startOpeningExplorerButton" class="primary">Explorer</button>
           </section>
-          <div class="opening-view-switch segmented-control" aria-label="Opening view">
-            <button class="segment active" data-opening-view="tree">Tree</button>
-            <button class="segment" data-opening-view="list">List</button>
+          <section class="repertoire-color-list" aria-label="Choose repertoire color">
+            <button class="repertoire-color-row" data-open-repertoire="white">
+              <span class="repertoire-color-piece light-piece" aria-hidden="true">W</span>
+              <span><strong>White repertoire</strong><small id="whiteRepertoireCount">0 games</small></span>
+              <span class="row-arrow" aria-hidden="true">›</span>
+            </button>
+            <button class="repertoire-color-row" data-open-repertoire="black">
+              <span class="repertoire-color-piece dark-piece" aria-hidden="true">B</span>
+              <span><strong>Black repertoire</strong><small id="blackRepertoireCount">0 games</small></span>
+              <span class="row-arrow" aria-hidden="true">›</span>
+            </button>
+          </section>
+          <div class="repertoire-entry-actions">
+            <button id="startOpeningExplorerButton" class="text-button">Open free explorer</button>
+            <button id="toggleOpeningListButton" class="text-button">Opening statistics</button>
           </div>
-          <section id="openingTreePanel" class="repertoire-shell">
-            <div id="openingTreeSummary"></div>
-            <div id="openingTree" class="repertoire-tree"></div>
-          </section>
-          <section id="openingListPanel" hidden>
+          <section id="openingListPanel" class="opening-list-panel" hidden>
             <div class="opening-list-toolbar">
               <div>
                 <p class="eyebrow">All Openings</p>
@@ -129,6 +136,32 @@
               </label>
             </div>
             <div id="openingStatsList" class="opening-stats-list"></div>
+          </section>
+        </section>
+
+        <section class="view repertoire-map-view" id="repertoireMapView">
+          <header class="repertoire-map-header">
+            <button class="map-exit-button" id="exitRepertoireMap" aria-label="Back to openings" title="Back to openings">‹</button>
+            <div class="map-heading-copy">
+              <span>Repertoire map</span>
+              <strong id="repertoireMapPath">Start</strong>
+            </div>
+            <div class="map-color-switch" aria-label="Repertoire color">
+              <button data-map-color="white">White</button>
+              <button data-map-color="black">Black</button>
+            </div>
+          </header>
+          <section class="repertoire-map-context">
+            <div class="map-mini-board" id="repertoireMapBoard" aria-label="Current repertoire position"></div>
+            <div class="map-position-copy">
+              <p id="repertoireMapSide">White repertoire</p>
+              <h2 id="repertoireMapOpening">Starting position</h2>
+              <div class="map-position-metrics" id="repertoireMapMetrics"></div>
+            </div>
+          </section>
+          <section class="repertoire-map-stage" id="repertoireMapStage" aria-label="Opening repertoire map">
+            <div class="map-loading" id="repertoireMapLoading">Building repertoire…</div>
+            <svg id="repertoireMapSvg" viewBox="0 0 390 500" role="tree" aria-label="Opening moves"></svg>
           </section>
         </section>
 
@@ -343,6 +376,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=27" type="module"></script>
+    <script src="/static/app.js?v=28" type="module"></script>
   </body>
 </html>

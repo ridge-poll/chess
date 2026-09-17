@@ -6,9 +6,8 @@ const state = {
   jobs: [],
   queue: null,
   openingStats: [],
-  openingTree: null,
-  openingTreeNodeId: "root",
-  openingView: "tree",
+  repertoireGraphs: { white: null, black: null },
+  repertoireMap: { color: "white", activePath: [], loading: false, requestId: 0 },
   profiles: [],
   activeProfile: null,
   openingSortBy: "most_played",
@@ -57,6 +56,7 @@ const els = {
   views: {
     home: document.querySelector("#homeView"),
     openings: document.querySelector("#openingsView"),
+    repertoireMap: document.querySelector("#repertoireMapView"),
     openingExplorer: document.querySelector("#openingExplorerView"),
     games: document.querySelector("#gamesView"),
     insights: document.querySelector("#insightsView"),
@@ -85,11 +85,21 @@ const els = {
   openingEdgeList: document.querySelector("#openingEdgeList"),
   openingSortSelect: document.querySelector("#openingSortSelect"),
   openingStatsList: document.querySelector("#openingStatsList"),
-  openingTree: document.querySelector("#openingTree"),
-  openingTreeSummary: document.querySelector("#openingTreeSummary"),
-  openingTreePanel: document.querySelector("#openingTreePanel"),
   openingListPanel: document.querySelector("#openingListPanel"),
-  openingViewButtons: document.querySelectorAll("[data-opening-view]"),
+  toggleOpeningListButton: document.querySelector("#toggleOpeningListButton"),
+  repertoireColorButtons: document.querySelectorAll("[data-open-repertoire]"),
+  whiteRepertoireCount: document.querySelector("#whiteRepertoireCount"),
+  blackRepertoireCount: document.querySelector("#blackRepertoireCount"),
+  exitRepertoireMap: document.querySelector("#exitRepertoireMap"),
+  mapColorButtons: document.querySelectorAll("[data-map-color]"),
+  repertoireMapPath: document.querySelector("#repertoireMapPath"),
+  repertoireMapBoard: document.querySelector("#repertoireMapBoard"),
+  repertoireMapSide: document.querySelector("#repertoireMapSide"),
+  repertoireMapOpening: document.querySelector("#repertoireMapOpening"),
+  repertoireMapMetrics: document.querySelector("#repertoireMapMetrics"),
+  repertoireMapStage: document.querySelector("#repertoireMapStage"),
+  repertoireMapLoading: document.querySelector("#repertoireMapLoading"),
+  repertoireMapSvg: document.querySelector("#repertoireMapSvg"),
   openingExplorerMount: document.querySelector("#openingExplorerMount"),
   openingExplorerName: document.querySelector("#openingExplorerName"),
   openingExplorerPly: document.querySelector("#openingExplorerPly"),
@@ -159,15 +169,16 @@ function setView(view) {
     button.classList.toggle("active", button.dataset.view === primaryView);
   });
   if (els.pageTitle) els.pageTitle.textContent = pageTitleFor(view);
+  if (view === "openings") renderRepertoireEntry();
 }
 
 function isWorkspaceView(view) {
-  return view === "analysis" || view === "openingExplorer";
+  return view === "analysis" || view === "openingExplorer" || view === "repertoireMap";
 }
 
 function primaryViewFor(view) {
   if (view === "detail" || view === "analysis") return "games";
-  if (view === "openingExplorer") return "openings";
+  if (view === "openingExplorer" || view === "repertoireMap") return "openings";
   return view;
 }
 
@@ -175,6 +186,7 @@ function pageTitleFor(view) {
   return {
     home: "Home",
     openings: "Openings",
+    repertoireMap: "Repertoire Map",
     openingExplorer: "Opening Explorer",
     games: "Games",
     insights: "Insights",
@@ -187,13 +199,12 @@ function pageTitleFor(view) {
 async function loadAll() {
   await loadProfiles();
   const profileQuery = profileParam();
-  const [dashboard, games, queueStatus, syncs, openingStats, openingTree] = await Promise.all([
+  const [dashboard, games, queueStatus, syncs, openingStats] = await Promise.all([
     api(`/api/dashboard${profileQuery}`),
     api(`/api/games${profileQuery}`),
     api(`/api/analysis/jobs${profileQuery}`),
     api(`/api/chesscom/syncs${profileQuery}`),
     api(`/api/openings?sort_by=${encodeURIComponent(state.openingSortBy)}${profileAmpParam()}`),
-    api(`/api/openings/tree${profileQuery}`),
   ]);
   state.dashboard = dashboard;
   state.games = games;
@@ -201,13 +212,13 @@ async function loadAll() {
   state.jobs = queueStatus.jobs || [];
   state.syncs = syncs || [];
   state.openingStats = openingStats || [];
-  state.openingTree = openingTree?.root || null;
-  state.openingTreeNodeId = "root";
+  state.repertoireGraphs = { white: null, black: null };
+  state.repertoireMap.activePath = [];
   renderDashboard();
   renderProfiles();
   renderGames();
   renderOpeningStats();
-  renderRepertoireTree();
+  renderRepertoireEntry();
   renderJobs();
   renderSyncHistory();
   updatePolling();
@@ -272,95 +283,229 @@ function renderOpeningStats() {
   `).join("");
 }
 
-function renderRepertoireTree() {
-  if (!els.openingTree || !els.openingTreeSummary) return;
-  const root = state.openingTree;
-  if (!root || !root.games) {
-    els.openingTreeSummary.innerHTML = `
-      <div class="repertoire-empty">
-        <strong>Your repertoire begins here.</strong>
-        <span>Import games to grow a move tree from your own play.</span>
-      </div>`;
-    els.openingTree.innerHTML = "";
+function renderRepertoireEntry() {
+  if (!els.whiteRepertoireCount || !els.blackRepertoireCount) return;
+  const player = String(state.activeProfile?.chesscom_username || state.dashboard?.player || "").toLowerCase();
+  const counts = { white: 0, black: 0 };
+  for (const game of state.games || []) {
+    const explicit = String(game.player_color || "").toLowerCase();
+    if (explicit === "white" || explicit === "black") {
+      counts[explicit] += 1;
+    } else if (player && String(game.white || "").toLowerCase() === player) {
+      counts.white += 1;
+    } else if (player && String(game.black || "").toLowerCase() === player) {
+      counts.black += 1;
+    }
+  }
+  els.whiteRepertoireCount.textContent = `${counts.white} ${counts.white === 1 ? "game" : "games"}`;
+  els.blackRepertoireCount.textContent = `${counts.black} ${counts.black === 1 ? "game" : "games"}`;
+  const remembered = localStorage.getItem(repertoireColorStorageKey());
+  if (remembered === "white" || remembered === "black") state.repertoireMap.color = remembered;
+  els.repertoireColorButtons.forEach((button) => {
+    button.classList.toggle("remembered", button.dataset.openRepertoire === state.repertoireMap.color);
+  });
+}
+
+function repertoireColorStorageKey() {
+  return `repertoireColor:${state.activeProfile?.id || "default"}`;
+}
+
+async function openRepertoireMap(color) {
+  const selectedColor = color === "black" ? "black" : "white";
+  const requestId = state.repertoireMap.requestId + 1;
+  state.repertoireMap.color = selectedColor;
+  state.repertoireMap.activePath = [];
+  state.repertoireMap.requestId = requestId;
+  localStorage.setItem(repertoireColorStorageKey(), selectedColor);
+  setView("repertoireMap");
+  renderRepertoireMap();
+  if (!state.repertoireGraphs[selectedColor]) {
+    state.repertoireMap.loading = true;
+    renderRepertoireMap();
+    try {
+      state.repertoireGraphs[selectedColor] = await api(
+        `/api/openings/repertoire?color=${selectedColor}${profileAmpParam()}&max_depth=24`,
+      );
+    } catch (error) {
+      showStatus(error.message, 8000);
+    } finally {
+      if (state.repertoireMap.requestId === requestId) state.repertoireMap.loading = false;
+    }
+  }
+  if (state.repertoireMap.requestId !== requestId) return;
+  renderRepertoireMap();
+}
+
+function currentRepertoireGraph() {
+  return state.repertoireGraphs[state.repertoireMap.color];
+}
+
+function currentRepertoirePosition(graph = currentRepertoireGraph()) {
+  if (!graph) return null;
+  const lastEdgeId = state.repertoireMap.activePath.at(-1);
+  const lastEdge = lastEdgeId ? graph.edges[lastEdgeId] : null;
+  return graph.positions[lastEdge?.child_position_id || graph.root_position_id] || null;
+}
+
+function renderRepertoireMap() {
+  if (!els.repertoireMapSvg) return;
+  const color = state.repertoireMap.color;
+  const graph = currentRepertoireGraph();
+  els.mapColorButtons.forEach((button) => button.classList.toggle("active", button.dataset.mapColor === color));
+  els.repertoireMapSide.textContent = `${color === "white" ? "White" : "Black"} repertoire`;
+  els.repertoireMapLoading.hidden = !state.repertoireMap.loading;
+  els.repertoireMapSvg.hidden = state.repertoireMap.loading;
+  if (state.repertoireMap.loading) return;
+  if (!graph) {
+    els.repertoireMapOpening.textContent = "Repertoire unavailable";
+    els.repertoireMapMetrics.innerHTML = "";
+    els.repertoireMapBoard.innerHTML = renderBoardSquares(STARTING_FEN, color);
+    els.repertoireMapSvg.innerHTML = `<text class="map-empty-text" x="195" y="250" text-anchor="middle">Unable to load repertoire.</text>`;
     return;
   }
-  const node = findRepertoireNode(root, state.openingTreeNodeId) || root;
-  const breadcrumbs = repertoireBreadcrumbs(root, node.id);
-  els.openingTreeSummary.innerHTML = `
-    <div class="repertoire-position">
-      <div class="repertoire-board" aria-label="Position after ${node.ply} plies">
-        ${renderBoardSquares(node.fen || STARTING_FEN)}
-      </div>
-      <div class="repertoire-position-copy">
-        <p class="eyebrow">${node.ply ? `After ${escapeHtml(node.san)}` : "Your games"}</p>
-        <h2>${escapeHtml(node.opening || "Opening not identified")}</h2>
-        <div class="repertoire-metrics">
-          <span><strong>${node.games}</strong> games</span>
-          <span><strong>${node.score_pct == null ? "-" : `${node.score_pct}%`}</strong> score</span>
-          <span><strong>${node.average_accuracy == null ? "-" : `${node.average_accuracy}%`}</strong> accuracy</span>
-        </div>
-      </div>
-    </div>
-    <div class="repertoire-path" aria-label="Current opening line">
-      ${breadcrumbs.map((item, index) => `
-        <button data-repertoire-node="${escapeHtml(item.id)}" class="${item.id === node.id ? "active" : ""}">
-          ${index === 0 ? "Start" : escapeHtml(item.san)}
-        </button>`).join("")}
-    </div>`;
-  els.openingTree.innerHTML = node.children?.length
-    ? `<div class="tree-caption"><span>Common continuations</span><strong>Next 3 plies</strong></div>${renderRepertoireBranches(node, 0)}`
-    : `<div class="repertoire-empty"><strong>End of this line</strong><span>Step back through the moves above to explore another branch.</span></div>`;
-  bindRepertoireTree();
+  const position = currentRepertoirePosition(graph);
+  if (!position) return;
+  const pathEdges = state.repertoireMap.activePath.map((edgeId) => graph.edges[edgeId]).filter(Boolean);
+  els.repertoireMapPath.textContent = pathEdges.length ? pathEdges.map((edge) => edge.san).join("  ·  ") : "Starting position";
+  els.repertoireMapOpening.textContent = position.opening || "Opening not identified";
+  els.repertoireMapBoard.innerHTML = renderBoardSquares(position.fen || STARTING_FEN, color);
+  els.repertoireMapMetrics.innerHTML = `
+    <span><strong>${position.games}</strong><small>games</small></span>
+    <span><strong>${position.score_pct == null ? "-" : `${position.score_pct}%`}</strong><small>score</small></span>
+    <span><strong>${position.average_accuracy == null ? "-" : `${position.average_accuracy}%`}</strong><small>accuracy</small></span>`;
+  els.repertoireMapSvg.innerHTML = renderRepertoireMapSvg(graph, position, pathEdges);
+  bindRepertoireMapNodes();
 }
 
-function renderRepertoireBranches(parent, depth) {
-  if (depth >= 3 || !parent.children?.length) return "";
-  const maxGames = Math.max(...parent.children.map((child) => Number(child.games) || 0), 1);
-  const childLimit = depth === 0 ? 4 : depth === 1 ? 3 : 2;
-  return `<div class="repertoire-branches depth-${depth}">${parent.children.slice(0, childLimit).map((child) => {
-    const share = Math.round(((Number(child.games) || 0) / maxGames) * 100);
-    return `
-      <div class="repertoire-branch" style="--branch-weight:${Math.max(2, Math.round(share / 18))}px">
-        <button class="repertoire-node" data-repertoire-node="${escapeHtml(child.id)}">
-          <span class="move-san">${escapeHtml(child.san)}</span>
-          <span class="move-frequency">${child.games} ${child.games === 1 ? "game" : "games"}</span>
-          <span class="move-score">${child.score_pct == null ? "-" : `${child.score_pct}%`}</span>
-        </button>
-        ${renderRepertoireBranches(child, depth + 1)}
-      </div>`;
-  }).join("")}</div>`;
-}
-
-function findRepertoireNode(node, id) {
-  if (!node || node.id === id) return node;
-  for (const child of node.children || []) {
-    const found = findRepertoireNode(child, id);
-    if (found) return found;
+function renderRepertoireMapSvg(graph, position, pathEdges) {
+  if (!position.games) {
+    return `<text class="map-empty-text" x="195" y="250" text-anchor="middle">No ${escapeHtml(state.repertoireMap.color)} games yet.</text>`;
   }
-  return null;
-}
+  const width = 390;
+  const centerX = width / 2;
+  const previousEdge = pathEdges.at(-1) || null;
+  const previousPosition = previousEdge ? graph.positions[previousEdge.parent_position_id] : null;
+  const outgoing = (position.outgoing_edge_ids || [])
+    .map((edgeId) => graph.edges[edgeId])
+    .filter(Boolean)
+    .sort((left, right) => right.games - left.games)
+    .slice(0, 5);
+  const childXs = spreadMapNodes(outgoing.length, width);
+  const previousY = 70;
+  const focusY = 225;
+  const childY = 405;
+  const edgeMarkup = [];
+  const nodeMarkup = [];
 
-function repertoireBreadcrumbs(root, id) {
-  const path = [];
-  function walk(node) {
-    path.push(node);
-    if (node.id === id) return true;
-    for (const child of node.children || []) {
-      if (walk(child)) return true;
-    }
-    path.pop();
-    return false;
+  if (previousEdge && previousPosition) {
+    const previousNodeEdge = pathEdges.at(-2) || null;
+    edgeMarkup.push(renderMapEdge(previousEdge, centerX, previousY + 22, centerX, focusY - 35, false));
+    nodeMarkup.push(renderMapNode({
+      x: centerX,
+      y: previousY,
+      radius: 21,
+      label: previousNodeEdge?.san || "Start",
+      edge: previousNodeEdge,
+      position: previousPosition,
+      role: "previous",
+      action: "previous",
+    }));
   }
-  walk(root);
-  return path;
+
+  nodeMarkup.push(renderMapNode({
+    x: centerX,
+    y: focusY,
+    radius: 36,
+    label: previousEdge?.san || "Start",
+    edge: previousEdge,
+    position,
+    role: "focus",
+  }));
+
+  outgoing.forEach((edge, index) => {
+    const childPosition = graph.positions[edge.child_position_id];
+    const childX = childXs[index];
+    edgeMarkup.push(renderMapEdge(edge, centerX, focusY + 37, childX, childY - 27, true));
+    nodeMarkup.push(renderMapNode({
+      x: childX,
+      y: childY,
+      radius: 27,
+      label: edge.san,
+      edge,
+      position: childPosition,
+      role: "next",
+      edgeId: edge.id,
+    }));
+  });
+  if (!outgoing.length) {
+    nodeMarkup.push(`<text class="map-empty-text" x="${centerX}" y="405" text-anchor="middle">End of observed line</text>`);
+  }
+  return `<g class="map-edges">${edgeMarkup.join("")}</g><g class="map-nodes">${nodeMarkup.join("")}</g>`;
 }
 
-function bindRepertoireTree() {
-  document.querySelectorAll("[data-repertoire-node]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.openingTreeNodeId = button.dataset.repertoireNode;
-      renderRepertoireTree();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+function spreadMapNodes(count, width) {
+  if (count <= 0) return [];
+  if (count === 1) return [width / 2];
+  const margin = 40;
+  const gap = (width - margin * 2) / (count - 1);
+  return Array.from({ length: count }, (_, index) => margin + index * gap);
+}
+
+function renderMapEdge(edge, startX, startY, endX, endY, showCount) {
+  const opacity = Math.min(0.88, Math.max(0.2, 0.16 + Number(edge.frequency || 0) * 0.72));
+  const midX = startX + (endX - startX) * 0.58;
+  const midY = startY + (endY - startY) * 0.58;
+  const statsHeight = 34;
+  const total = Math.max(1, Number(edge.wins || 0) + Number(edge.draws || 0) + Number(edge.losses || 0));
+  const lossHeight = statsHeight * Number(edge.losses || 0) / total;
+  const drawHeight = statsHeight * Number(edge.draws || 0) / total;
+  const winHeight = statsHeight - lossHeight - drawHeight;
+  return `
+    <g class="map-edge-group" style="--edge-opacity:${opacity}">
+      <path class="map-edge" d="M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}"></path>
+      ${showCount ? `<text class="map-edge-count" x="${midX - 9}" y="${midY + 3}" text-anchor="end">${edge.games}</text>` : ""}
+      ${showCount ? `<g class="map-wdl" transform="translate(${midX + 8} ${midY - statsHeight / 2})">
+        <rect class="loss" width="3" height="${lossHeight}"></rect>
+        <rect class="draw" y="${lossHeight}" width="3" height="${drawHeight}"></rect>
+        <rect class="win" y="${lossHeight + drawHeight}" width="3" height="${winHeight}"></rect>
+      </g>` : ""}
+    </g>`;
+}
+
+function renderMapNode({ x, y, radius, label, edge, position, role, edgeId = "", action = "" }) {
+  const moverColor = edge?.mover_color || "white";
+  const ownership = edge?.is_user_move ? "user-move" : "opponent-move";
+  const deviation = edge?.book_status === "deviation" ? "deviation" : "";
+  const transposition = position?.is_transposition;
+  const interactive = Boolean(edgeId || action);
+  return `
+    <g class="map-node ${role} ${moverColor}-move ${ownership} ${deviation} ${interactive ? "interactive" : ""}"
+      transform="translate(${x} ${y})"
+      ${edgeId ? `data-map-edge="${escapeHtml(edgeId)}"` : ""}
+      ${action ? `data-map-action="${escapeHtml(action)}"` : ""}
+      ${interactive ? `role="treeitem" tabindex="0" aria-label="${escapeHtml(label)}"` : ""}>
+      <circle r="${radius}"></circle>
+      <text text-anchor="middle" dominant-baseline="central">${escapeHtml(label)}</text>
+      ${transposition ? `<g class="transposition-mark" transform="translate(${radius - 3} ${-radius + 3})"><circle r="5"></circle><circle r="2"></circle></g>` : ""}
+    </g>`;
+}
+
+function bindRepertoireMapNodes() {
+  els.repertoireMapSvg.querySelectorAll("[data-map-edge], [data-map-action]").forEach((node) => {
+    const select = () => {
+      if (node.dataset.mapAction === "previous") {
+        state.repertoireMap.activePath.pop();
+      } else if (node.dataset.mapEdge) {
+        state.repertoireMap.activePath.push(node.dataset.mapEdge);
+      }
+      renderRepertoireMap();
+    };
+    node.addEventListener("click", select);
+    node.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        select();
+      }
     });
   });
 }
@@ -2195,12 +2340,23 @@ els.startOpeningExplorerButton.addEventListener("click", async () => {
   setView("openingExplorer");
 });
 
-els.openingViewButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    state.openingView = button.dataset.openingView;
-    els.openingTreePanel.hidden = state.openingView !== "tree";
-    els.openingListPanel.hidden = state.openingView !== "list";
-    els.openingViewButtons.forEach((item) => item.classList.toggle("active", item === button));
+els.repertoireColorButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    await openRepertoireMap(button.dataset.openRepertoire);
+  });
+});
+
+els.toggleOpeningListButton.addEventListener("click", () => {
+  els.openingListPanel.hidden = !els.openingListPanel.hidden;
+  els.toggleOpeningListButton.textContent = els.openingListPanel.hidden ? "Opening statistics" : "Hide statistics";
+});
+
+els.exitRepertoireMap.addEventListener("click", () => setView("openings"));
+
+els.mapColorButtons.forEach((button) => {
+  button.addEventListener("click", async () => {
+    if (button.dataset.mapColor === state.repertoireMap.color) return;
+    await openRepertoireMap(button.dataset.mapColor);
   });
 });
 
