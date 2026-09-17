@@ -6,6 +6,9 @@ const state = {
   jobs: [],
   queue: null,
   openingStats: [],
+  openingTree: null,
+  openingTreeNodeId: "root",
+  openingView: "tree",
   profiles: [],
   activeProfile: null,
   openingSortBy: "most_played",
@@ -82,6 +85,11 @@ const els = {
   openingEdgeList: document.querySelector("#openingEdgeList"),
   openingSortSelect: document.querySelector("#openingSortSelect"),
   openingStatsList: document.querySelector("#openingStatsList"),
+  openingTree: document.querySelector("#openingTree"),
+  openingTreeSummary: document.querySelector("#openingTreeSummary"),
+  openingTreePanel: document.querySelector("#openingTreePanel"),
+  openingListPanel: document.querySelector("#openingListPanel"),
+  openingViewButtons: document.querySelectorAll("[data-opening-view]"),
   openingExplorerMount: document.querySelector("#openingExplorerMount"),
   openingExplorerName: document.querySelector("#openingExplorerName"),
   openingExplorerPly: document.querySelector("#openingExplorerPly"),
@@ -179,12 +187,13 @@ function pageTitleFor(view) {
 async function loadAll() {
   await loadProfiles();
   const profileQuery = profileParam();
-  const [dashboard, games, queueStatus, syncs, openingStats] = await Promise.all([
+  const [dashboard, games, queueStatus, syncs, openingStats, openingTree] = await Promise.all([
     api(`/api/dashboard${profileQuery}`),
     api(`/api/games${profileQuery}`),
     api(`/api/analysis/jobs${profileQuery}`),
     api(`/api/chesscom/syncs${profileQuery}`),
     api(`/api/openings?sort_by=${encodeURIComponent(state.openingSortBy)}${profileAmpParam()}`),
+    api(`/api/openings/tree${profileQuery}`),
   ]);
   state.dashboard = dashboard;
   state.games = games;
@@ -192,10 +201,13 @@ async function loadAll() {
   state.jobs = queueStatus.jobs || [];
   state.syncs = syncs || [];
   state.openingStats = openingStats || [];
+  state.openingTree = openingTree?.root || null;
+  state.openingTreeNodeId = "root";
   renderDashboard();
   renderProfiles();
   renderGames();
   renderOpeningStats();
+  renderRepertoireTree();
   renderJobs();
   renderSyncHistory();
   updatePolling();
@@ -258,6 +270,99 @@ function renderOpeningStats() {
       </div>
     </article>
   `).join("");
+}
+
+function renderRepertoireTree() {
+  if (!els.openingTree || !els.openingTreeSummary) return;
+  const root = state.openingTree;
+  if (!root || !root.games) {
+    els.openingTreeSummary.innerHTML = `
+      <div class="repertoire-empty">
+        <strong>Your repertoire begins here.</strong>
+        <span>Import games to grow a move tree from your own play.</span>
+      </div>`;
+    els.openingTree.innerHTML = "";
+    return;
+  }
+  const node = findRepertoireNode(root, state.openingTreeNodeId) || root;
+  const breadcrumbs = repertoireBreadcrumbs(root, node.id);
+  els.openingTreeSummary.innerHTML = `
+    <div class="repertoire-position">
+      <div class="repertoire-board" aria-label="Position after ${node.ply} plies">
+        ${renderBoardSquares(node.fen || STARTING_FEN)}
+      </div>
+      <div class="repertoire-position-copy">
+        <p class="eyebrow">${node.ply ? `After ${escapeHtml(node.san)}` : "Your games"}</p>
+        <h2>${escapeHtml(node.opening || "Opening not identified")}</h2>
+        <div class="repertoire-metrics">
+          <span><strong>${node.games}</strong> games</span>
+          <span><strong>${node.score_pct == null ? "-" : `${node.score_pct}%`}</strong> score</span>
+          <span><strong>${node.average_accuracy == null ? "-" : `${node.average_accuracy}%`}</strong> accuracy</span>
+        </div>
+      </div>
+    </div>
+    <div class="repertoire-path" aria-label="Current opening line">
+      ${breadcrumbs.map((item, index) => `
+        <button data-repertoire-node="${escapeHtml(item.id)}" class="${item.id === node.id ? "active" : ""}">
+          ${index === 0 ? "Start" : escapeHtml(item.san)}
+        </button>`).join("")}
+    </div>`;
+  els.openingTree.innerHTML = node.children?.length
+    ? `<div class="tree-caption"><span>Common continuations</span><strong>Next 3 plies</strong></div>${renderRepertoireBranches(node, 0)}`
+    : `<div class="repertoire-empty"><strong>End of this line</strong><span>Step back through the moves above to explore another branch.</span></div>`;
+  bindRepertoireTree();
+}
+
+function renderRepertoireBranches(parent, depth) {
+  if (depth >= 3 || !parent.children?.length) return "";
+  const maxGames = Math.max(...parent.children.map((child) => Number(child.games) || 0), 1);
+  const childLimit = depth === 0 ? 4 : depth === 1 ? 3 : 2;
+  return `<div class="repertoire-branches depth-${depth}">${parent.children.slice(0, childLimit).map((child) => {
+    const share = Math.round(((Number(child.games) || 0) / maxGames) * 100);
+    return `
+      <div class="repertoire-branch" style="--branch-weight:${Math.max(2, Math.round(share / 18))}px">
+        <button class="repertoire-node" data-repertoire-node="${escapeHtml(child.id)}">
+          <span class="move-san">${escapeHtml(child.san)}</span>
+          <span class="move-frequency">${child.games} ${child.games === 1 ? "game" : "games"}</span>
+          <span class="move-score">${child.score_pct == null ? "-" : `${child.score_pct}%`}</span>
+        </button>
+        ${renderRepertoireBranches(child, depth + 1)}
+      </div>`;
+  }).join("")}</div>`;
+}
+
+function findRepertoireNode(node, id) {
+  if (!node || node.id === id) return node;
+  for (const child of node.children || []) {
+    const found = findRepertoireNode(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function repertoireBreadcrumbs(root, id) {
+  const path = [];
+  function walk(node) {
+    path.push(node);
+    if (node.id === id) return true;
+    for (const child of node.children || []) {
+      if (walk(child)) return true;
+    }
+    path.pop();
+    return false;
+  }
+  walk(root);
+  return path;
+}
+
+function bindRepertoireTree() {
+  document.querySelectorAll("[data-repertoire-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.openingTreeNodeId = button.dataset.repertoireNode;
+      renderRepertoireTree();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
 }
 
 function renderDashboard() {
@@ -2088,6 +2193,15 @@ els.navButtons.forEach((button) => {
 els.startOpeningExplorerButton.addEventListener("click", async () => {
   await ensureOpeningExplorer();
   setView("openingExplorer");
+});
+
+els.openingViewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    state.openingView = button.dataset.openingView;
+    els.openingTreePanel.hidden = state.openingView !== "tree";
+    els.openingListPanel.hidden = state.openingView !== "list";
+    els.openingViewButtons.forEach((item) => item.classList.toggle("active", item === button));
+  });
 });
 
 els.refreshButton.addEventListener("click", async () => {

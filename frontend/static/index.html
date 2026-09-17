@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=26" />
-    <link rel="icon" href="/static/logo.png?v=26" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=26" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=27" />
+    <link rel="icon" href="/static/logo.png?v=27" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=27" />
   </head>
   <body>
     <div id="app">
@@ -100,25 +100,36 @@
             <div>
               <p class="eyebrow">Repertoire</p>
               <h2>Openings</h2>
-              <p class="muted-copy">Review your opening results or enter the board workspace to explore lines.</p>
+              <p class="muted-copy">Follow the lines you actually play and see where your repertoire branches.</p>
             </div>
             <button id="startOpeningExplorerButton" class="primary">Explorer</button>
           </section>
-          <section class="panel filter-panel">
-            <div class="panel-heading">
-              <h2>Openings</h2>
-            </div>
-            <label class="full-label">
-              <span>Sort By</span>
-              <select id="openingSortSelect" aria-label="Sort openings">
-                <option value="most_played">Most Played</option>
-                <option value="highest_win_rate">Highest Win Rate</option>
-                <option value="highest_accuracy">Highest Accuracy</option>
-                <option value="lowest_accuracy">Lowest Accuracy</option>
-              </select>
-            </label>
+          <div class="opening-view-switch segmented-control" aria-label="Opening view">
+            <button class="segment active" data-opening-view="tree">Tree</button>
+            <button class="segment" data-opening-view="list">List</button>
+          </div>
+          <section id="openingTreePanel" class="repertoire-shell">
+            <div id="openingTreeSummary"></div>
+            <div id="openingTree" class="repertoire-tree"></div>
           </section>
-          <div id="openingStatsList" class="opening-stats-list"></div>
+          <section id="openingListPanel" hidden>
+            <div class="opening-list-toolbar">
+              <div>
+                <p class="eyebrow">All Openings</p>
+                <h2>Performance list</h2>
+              </div>
+              <label>
+                <span class="sr-only">Sort openings</span>
+                <select id="openingSortSelect" aria-label="Sort openings">
+                  <option value="most_played">Most Played</option>
+                  <option value="highest_win_rate">Highest Win Rate</option>
+                  <option value="highest_accuracy">Highest Accuracy</option>
+                  <option value="lowest_accuracy">Lowest Accuracy</option>
+                </select>
+              </label>
+            </div>
+            <div id="openingStatsList" class="opening-stats-list"></div>
+          </section>
         </section>
 
         <section class="view board-workspace-view" id="openingExplorerView">
@@ -332,6 +343,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=26" type="module"></script>
+    <script src="/static/app.js?v=27" type="module"></script>
   </body>
 </html>

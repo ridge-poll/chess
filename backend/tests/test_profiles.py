@@ -13,6 +13,7 @@ from app.services.profiles import (
     set_active_profile,
     update_sync_preferences,
 )
+from app.services.repertoire import repertoire_tree
 
 
 SICILIAN_PGN = """
@@ -70,6 +71,8 @@ def test_imports_and_statistics_are_profile_specific(tmp_path: Path, monkeypatch
     dashboard_b = dashboard(int(profile_b["id"]))
     openings_a = opening_stats(profile_id=int(profile_a["id"]))
     openings_b = opening_stats(profile_id=int(profile_b["id"]))
+    tree_a = repertoire_tree(int(profile_a["id"]))
+    tree_b = repertoire_tree(int(profile_b["id"]))
 
     assert len(games_a) == 1
     assert len(games_b) == 1
@@ -83,6 +86,8 @@ def test_imports_and_statistics_are_profile_specific(tmp_path: Path, monkeypatch
     assert dashboard_b["time_control_stats"][2]["games"] == 1
     assert openings_a[0]["opening"] == "Sicilian Defense"
     assert openings_b[0]["opening"] == "French Defense"
+    assert tree_a["root"]["children"][0]["children"][0]["san"] == "c5"
+    assert tree_b["root"]["children"][0]["children"][0]["san"] == "e6"
 
 
 def test_existing_games_migrate_to_default_profile(tmp_path: Path, monkeypatch) -> None:

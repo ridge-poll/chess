@@ -5,6 +5,7 @@ import app.db as db
 from app.pgn.openings import detect_opening_from_san
 from app.services.imports import import_pgn_text
 from app.services.opening_stats import opening_stats
+from app.services.repertoire import repertoire_tree
 
 
 PGN = """
@@ -50,4 +51,22 @@ def test_live_opening_detection_gets_more_specific() -> None:
     assert detect_opening_from_san(["e4"]) == "King's Pawn Opening"
     assert detect_opening_from_san(["e4", "c5"]) == "Sicilian Defense"
     assert detect_opening_from_san(["e4", "c5", "Nf3", "Nc6"]) == "Sicilian Defense — Old Sicilian Variation"
+    assert detect_opening_from_san(["d4"]) == "Queen's Pawn Opening"
     assert detect_opening_from_san(["h4"]) is None
+
+
+def test_repertoire_tree_aggregates_profile_move_branches(tmp_path: Path, monkeypatch) -> None:
+    database_path = tmp_path / "tree.sqlite3"
+    monkeypatch.setattr(db, "settings", config.Settings(database_path=database_path))
+    db.init_db(database_path)
+    import_pgn_text(PGN)
+
+    tree = repertoire_tree()
+    root = tree["root"]
+    assert root["games"] == 2
+    assert root["fen"].startswith("rnbqkbnr/")
+    e4 = root["children"][0]
+    assert e4["san"] == "e4"
+    assert e4["games"] == 2
+    assert {child["san"] for child in e4["children"]} == {"c5", "e6"}
+    assert e4["score_pct"] == 100.0

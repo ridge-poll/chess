@@ -16,6 +16,7 @@ OPENING_PATTERNS: list[tuple[tuple[str, ...], str]] = [
     (("e4", "c6"), "Caro-Kann Defense"),
     (("e4", "d6"), "Pirc Defense"),
     (("e4", "g6"), "Modern Defense"),
+    (("d4",), "Queen's Pawn Opening"),
     (("d4", "Nf6", "c4", "g6"), "King's Indian Defense"),
     (("d4", "Nf6", "c4", "e6", "Nc3", "Bb4"), "Nimzo-Indian Defense"),
     (("d4", "Nf6", "c4", "e6"), "Queen's Pawn Indian Game"),
