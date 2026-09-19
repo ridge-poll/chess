@@ -1092,6 +1092,20 @@ input[type="number"] {
   overflow: hidden;
   touch-action: none;
   user-select: none;
+  background-color: var(--map-stage);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--map-edge) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--map-edge) 5%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: center 10px;
+}
+
+.repertoire-map-stage::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  box-shadow: inset 0 26px 36px -34px color-mix(in srgb, var(--ink) 42%, transparent);
 }
 
 #repertoireMapSvg {
@@ -1121,6 +1135,31 @@ input[type="number"] {
   stroke-linecap: round;
   stroke-width: 1.5;
   opacity: var(--edge-opacity);
+}
+
+.map-edge-group.historical {
+  opacity: var(--history-fade);
+}
+
+.map-edge-group.lineage .map-edge {
+  stroke: color-mix(in srgb, var(--accent) 72%, var(--map-edge));
+  stroke-width: 2.6;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 22%, transparent));
+}
+
+.map-edge-group.historical:not(.lineage) .map-edge {
+  stroke-width: 1;
+  opacity: 0.58;
+}
+
+.map-edge-group.unobserved-book .map-edge {
+  stroke-dasharray: 4 5;
+  opacity: 0.25;
+}
+
+.map-edge-group.deviation .map-edge {
+  stroke-dasharray: 1 4;
 }
 
 .map-camera {
@@ -1166,6 +1205,44 @@ input[type="number"] {
   stroke: color-mix(in srgb, var(--map-edge) 68%, transparent);
   stroke-width: 1.25;
   transition: r 180ms ease, stroke-width 180ms ease, opacity 180ms ease;
+}
+
+.map-node.history {
+  opacity: 0.78;
+}
+
+.map-node.history.lineage {
+  opacity: 0.96;
+}
+
+.map-node.history.relative {
+  opacity: 0.46;
+}
+
+.map-node.history-3.relative,
+.map-node.history-4.relative {
+  opacity: 0.35;
+}
+
+.map-node.history-5.relative,
+.map-node.history-6.relative,
+.map-node.history-7.relative,
+.map-node.history-8.relative {
+  opacity: 0.24;
+}
+
+.map-node.history.lineage > circle {
+  stroke: color-mix(in srgb, var(--accent) 78%, var(--map-edge));
+}
+
+.map-node.origin > circle {
+  fill: var(--surface);
+  stroke: var(--map-edge);
+}
+
+.map-node.origin text {
+  fill: var(--muted);
+  font-size: 9px;
 }
 
 .map-node.white-move > circle {
@@ -1219,6 +1296,14 @@ input[type="number"] {
 
 .map-node.focus text {
   font-size: 14px;
+}
+
+.map-node.focus > circle {
+  filter: drop-shadow(0 6px 10px color-mix(in srgb, var(--ink) 17%, transparent));
+}
+
+.map-node.next > circle {
+  filter: drop-shadow(0 3px 6px color-mix(in srgb, var(--ink) 10%, transparent));
 }
 
 .map-node.interactive {

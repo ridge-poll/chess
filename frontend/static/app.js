@@ -415,66 +415,119 @@ function buildRepertoireMapSvg(graph, position, pathEdges) {
       layout: emptyRepertoireLayout(width),
     };
   }
-  const previousEdge = pathEdges.at(-1) || null;
-  const previousPosition = previousEdge ? graph.positions[previousEdge.parent_position_id] : null;
   const retainedEdgeId = state.repertoireMap.activePath[state.repertoireMap.cursor] || null;
   const allOutgoing = (position.outgoing_edge_ids || [])
     .map((edgeId) => graph.edges[edgeId])
     .filter(Boolean)
     .sort((left, right) => right.games - left.games);
-  const outgoing = allOutgoing.slice(0, 7);
+  const outgoing = allOutgoing;
   if (retainedEdgeId && !outgoing.some((edge) => edge.id === retainedEdgeId)) {
     const retained = graph.edges[retainedEdgeId];
     if (retained?.parent_position_id === position.id) outgoing.splice(Math.max(0, outgoing.length - 1), 1, retained);
   }
-  const virtualWidth = width < 600 ? Math.max(width, 64 + outgoing.length * 82) : width;
+  const ancestorFamilies = pathEdges.map((selectedEdge, depth) => {
+    const parent = graph.positions[selectedEdge.parent_position_id];
+    const alternatives = (parent?.outgoing_edge_ids || [])
+      .map((edgeId) => graph.edges[edgeId])
+      .filter(Boolean)
+      .sort((left, right) => right.games - left.games);
+    if (!alternatives.some((edge) => edge.id === selectedEdge.id)) alternatives.push(selectedEdge);
+    return { depth, selectedEdge, alternatives };
+  });
+  const widestFamily = Math.max(outgoing.length, ...ancestorFamilies.map((family) => family.alternatives.length), 1);
+  const virtualWidth = width < 600 ? Math.max(width, 64 + widestFamily * 82) : width;
   const baseOffset = (width - virtualWidth) / 2;
   const minCameraOffset = Math.min(0, width - virtualWidth - 16);
   const maxCameraOffset = virtualWidth > width ? 16 : 0;
   const cameraOffset = clampNumber(baseOffset + state.repertoireMap.panX, minCameraOffset, maxCameraOffset);
   state.repertoireMap.panX = cameraOffset - baseOffset;
   const centerX = virtualWidth / 2;
-  const childXs = spreadMapNodes(outgoing.length, virtualWidth);
-  const previousY = 70;
-  const focusY = 225;
-  const childY = 405;
+  const focusY = pathEdges.length ? 338 : 245;
+  const childY = pathEdges.length ? 455 : 410;
   const edgeMarkup = [];
   const nodeMarkup = [];
   const positions = {};
 
-  if (previousEdge && previousPosition) {
-    const previousNodeEdge = pathEdges.at(-2) || null;
-    edgeMarkup.push(renderMapEdge(previousEdge, centerX, previousY + 22, centerX, focusY - 35, false));
+  if (!pathEdges.length) {
     nodeMarkup.push(renderMapNode({
       x: centerX,
-      y: previousY,
-      radius: 21,
-      label: previousNodeEdge?.san || "Start",
-      edge: previousNodeEdge,
-      position: previousPosition,
-      positionId: previousPosition.id,
-      role: "previous",
-      action: "previous",
+      y: focusY,
+      radius: 36,
+      label: "Start",
+      position,
+      positionId: position.id,
+      role: "focus origin",
     }));
-    positions[previousPosition.id] = mapPosition(centerX, previousY, cameraOffset);
+    positions[position.id] = mapPosition(centerX, focusY, cameraOffset);
+  } else {
+    const rootPosition = graph.positions[graph.root_position_id];
+    const rootY = historicalMapY(pathEdges.length, focusY, pathEdges.length);
+    const rootRadius = 8 + 8 * historicalMapScale(pathEdges.length);
+    nodeMarkup.push(renderMapNode({
+      x: centerX,
+      y: rootY,
+      radius: rootRadius,
+      label: "Start",
+      position: rootPosition,
+      positionId: rootPosition.id,
+      role: "history origin lineage",
+      action: "root",
+      scale: historicalMapScale(pathEdges.length),
+    }));
+    positions[rootPosition.id] = mapPosition(centerX, rootY, cameraOffset);
   }
 
-  nodeMarkup.push(renderMapNode({
-    x: centerX,
-    y: focusY,
-    radius: 36,
-    label: previousEdge?.san || "Start",
-    edge: previousEdge,
-    position,
-    positionId: position.id,
-    role: "focus",
-  }));
-  positions[position.id] = mapPosition(centerX, focusY, cameraOffset);
+  ancestorFamilies.forEach((family) => {
+    const distance = pathEdges.length - family.depth;
+    const y = historicalMapY(distance - 1, focusY, pathEdges.length);
+    const parentY = historicalMapY(distance, focusY, pathEdges.length);
+    const scale = historicalMapScale(Math.max(1, distance - 1));
+    const baseRadius = 5 + 15 * scale;
+    const familyWidth = Math.min(virtualWidth - 44, Math.max(90, (family.alternatives.length - 1) * (42 + 34 * scale)));
+    const xs = spreadMapNodesWithin(family.alternatives.length, centerX, familyWidth);
+    const selectedIndex = family.alternatives.findIndex((edge) => edge.id === family.selectedEdge.id);
+    if (selectedIndex >= 0) xs[selectedIndex] = centerX;
+    const occupied = new Set([centerX]);
+    family.alternatives.forEach((edge, index) => {
+      if (index === selectedIndex) return;
+      let x = xs[index];
+      while ([...occupied].some((used) => Math.abs(used - x) < baseRadius * 2 + 8)) x += x < centerX ? -12 : 12;
+      xs[index] = x;
+      occupied.add(x);
+    });
 
+    family.alternatives.forEach((edge, index) => {
+      const childPosition = graph.positions[edge.child_position_id];
+      const isLineage = edge.id === family.selectedEdge.id;
+      const radius = distance === 1 ? (isLineage ? 36 : 25) : baseRadius;
+      edgeMarkup.push(renderMapEdge(edge, centerX, Math.max(8, parentY), xs[index], y - radius, {
+        lineage: isLineage,
+        historical: true,
+        distance,
+      }));
+      nodeMarkup.push(renderMapNode({
+        x: xs[index],
+        y,
+        radius,
+        label: edge.san,
+        edge,
+        position: childPosition,
+        positionId: childPosition.id,
+        role: `${distance === 1 && isLineage ? "focus" : "history"} history-${Math.min(distance, 8)} ${isLineage ? "lineage" : "relative"}`,
+        edgeId: edge.id,
+        pathDepth: family.depth,
+        selected: isLineage,
+        scale,
+      }));
+      if (isLineage) positions[childPosition.id] = mapPosition(xs[index], y, cameraOffset);
+    });
+  });
+
+  const childXs = spreadMapNodes(outgoing.length, virtualWidth);
   outgoing.forEach((edge, index) => {
     const childPosition = graph.positions[edge.child_position_id];
     const childX = childXs[index];
-    edgeMarkup.push(renderMapEdge(edge, centerX, focusY + 37, childX, childY - 27, true));
+    edgeMarkup.push(renderMapEdge(edge, centerX, focusY + 37, childX, childY - 27, { showStats: true }));
     nodeMarkup.push(renderMapNode({
       x: childX,
       y: childY,
@@ -485,6 +538,7 @@ function buildRepertoireMapSvg(graph, position, pathEdges) {
       positionId: childPosition.id,
       role: "next",
       edgeId: edge.id,
+      pathDepth: pathEdges.length,
       retained: edge.id === retainedEdgeId,
     }));
     positions[childPosition.id] = mapPosition(childX, childY, cameraOffset);
@@ -504,6 +558,15 @@ function buildRepertoireMapSvg(graph, position, pathEdges) {
       positions,
     },
   };
+}
+
+function historicalMapY(distance, focusY, totalDepth) {
+  const gap = Math.min(104, 316 / Math.max(1, totalDepth));
+  return focusY - gap * distance;
+}
+
+function historicalMapScale(distance) {
+  return Math.max(0.16, Math.pow(0.78, Math.max(0, distance - 1)));
 }
 
 function emptyRepertoireLayout(width) {
@@ -530,7 +593,18 @@ function spreadMapNodes(count, width) {
   return Array.from({ length: count }, (_, index) => margin + index * gap);
 }
 
-function renderMapEdge(edge, startX, startY, endX, endY, showCount) {
+function spreadMapNodesWithin(count, center, width) {
+  if (count <= 0) return [];
+  if (count === 1) return [center];
+  const gap = width / (count - 1);
+  return Array.from({ length: count }, (_, index) => center - width / 2 + index * gap);
+}
+
+function renderMapEdge(edge, startX, startY, endX, endY, options = {}) {
+  const { showStats = false, lineage = false, historical = false, distance = 0 } = options;
+  const vocabulary = edge.observed === false && edge.book_status === "book"
+    ? "unobserved-book"
+    : edge.book_status === "deviation" ? "deviation" : "";
   const opacity = Math.min(0.88, Math.max(0.2, 0.16 + Number(edge.frequency || 0) * 0.72));
   const midX = startX + (endX - startX) * 0.58;
   const midY = startY + (endY - startY) * 0.58;
@@ -540,10 +614,10 @@ function renderMapEdge(edge, startX, startY, endX, endY, showCount) {
   const drawHeight = statsHeight * Number(edge.draws || 0) / total;
   const winHeight = statsHeight - lossHeight - drawHeight;
   return `
-    <g class="map-edge-group" style="--edge-opacity:${opacity}">
+    <g class="map-edge-group ${lineage ? "lineage" : ""} ${historical ? "historical" : ""} ${vocabulary}" style="--edge-opacity:${opacity};--history-fade:${Math.max(0.16, 1 - distance * 0.1)}">
       <path class="map-edge" d="M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}"></path>
-      ${showCount ? `<text class="map-edge-count" x="${midX - 9}" y="${midY + 3}" text-anchor="end">${edge.games}</text>` : ""}
-      ${showCount ? `<g class="map-wdl" transform="translate(${midX + 8} ${midY - statsHeight / 2})">
+      ${showStats ? `<text class="map-edge-count" x="${midX - 9}" y="${midY + 3}" text-anchor="end">${edge.games}</text>` : ""}
+      ${showStats ? `<g class="map-wdl" transform="translate(${midX + 8} ${midY - statsHeight / 2})">
         <rect class="loss" width="3" height="${lossHeight}"></rect>
         <rect class="draw" y="${lossHeight}" width="3" height="${drawHeight}"></rect>
         <rect class="win" y="${lossHeight + drawHeight}" width="3" height="${winHeight}"></rect>
@@ -551,20 +625,22 @@ function renderMapEdge(edge, startX, startY, endX, endY, showCount) {
     </g>`;
 }
 
-function renderMapNode({ x, y, radius, label, edge, position, positionId, role, edgeId = "", action = "", retained = false }) {
+function renderMapNode({ x, y, radius, label, edge, position, positionId, role, edgeId = "", action = "", retained = false, pathDepth = null, selected = false, scale = 1 }) {
   const moverColor = edge?.mover_color || "white";
   const ownership = edge?.is_user_move ? "user-move" : "opponent-move";
   const deviation = edge?.book_status === "deviation" ? "deviation" : "";
   const transposition = position?.is_transposition;
   const interactive = Boolean(edgeId || action);
+  const historyTextSize = role.includes("history") ? Math.max(5, 7 + 6 * scale) : null;
   return `
     <g class="map-node-slot" data-map-position="${escapeHtml(positionId)}" style="transform:translate(${x}px, ${y}px)">
-      <g class="map-node ${role} ${moverColor}-move ${ownership} ${deviation} ${retained ? "retained" : ""} ${interactive ? "interactive" : ""}"
+      <g class="map-node ${role} ${moverColor}-move ${ownership} ${deviation} ${retained ? "retained" : ""} ${selected ? "selected" : ""} ${interactive ? "interactive" : ""}" style="--node-scale:${scale}"
         ${edgeId ? `data-map-edge="${escapeHtml(edgeId)}"` : ""}
+        ${pathDepth == null ? "" : `data-map-depth="${pathDepth}"`}
         ${action ? `data-map-action="${escapeHtml(action)}"` : ""}
         ${interactive ? `role="treeitem" tabindex="0" aria-label="${escapeHtml(label)}"` : ""}>
         <circle r="${radius}"></circle>
-        <text text-anchor="middle" dominant-baseline="central">${escapeHtml(label)}</text>
+        <text text-anchor="middle" dominant-baseline="central"${historyTextSize ? ` style="font-size:${historyTextSize}px"` : ""}>${escapeHtml(label)}</text>
         ${retained ? `<circle class="retained-route-mark" cy="${radius + 8}" r="2"></circle>` : ""}
         ${transposition ? `<g class="transposition-mark" transform="translate(${radius - 3} ${-radius + 3})"><circle r="5"></circle><circle r="2"></circle></g>` : ""}
       </g>
@@ -576,7 +652,8 @@ function bindRepertoireMapNodes() {
     const select = () => {
       if (Date.now() < state.repertoireMap.suppressClickUntil) return;
       if (node.dataset.mapAction === "previous") navigateRepertoireMap("back");
-      else if (node.dataset.mapEdge) navigateRepertoireMap("forward", node.dataset.mapEdge);
+      else if (node.dataset.mapAction === "root") navigateRepertoireMap("root");
+      else if (node.dataset.mapEdge) navigateRepertoireMap("forward", node.dataset.mapEdge, Number(node.dataset.mapDepth));
     };
     node.addEventListener("click", select);
     node.addEventListener("keydown", (event) => {
@@ -588,11 +665,27 @@ function bindRepertoireMapNodes() {
   });
 }
 
-function navigateRepertoireMap(direction, edgeId = null) {
-  if (direction === "back") {
+function navigateRepertoireMap(direction, edgeId = null, pathDepth = null) {
+  if (direction === "root") {
+    if (state.repertoireMap.cursor <= 0) return false;
+    state.repertoireMap.cursor = 0;
+  } else if (direction === "back") {
     if (state.repertoireMap.cursor <= 0) return false;
     state.repertoireMap.cursor -= 1;
   } else if (direction === "forward") {
+    if (Number.isInteger(pathDepth) && pathDepth < state.repertoireMap.cursor) {
+      const existingEdge = state.repertoireMap.activePath[pathDepth];
+      if (existingEdge === edgeId) {
+        state.repertoireMap.cursor = pathDepth + 1;
+      } else {
+        state.repertoireMap.activePath = [...state.repertoireMap.activePath.slice(0, pathDepth), edgeId];
+        state.repertoireMap.cursor = pathDepth + 1;
+      }
+      state.repertoireMap.transitionDirection = "jump";
+      state.repertoireMap.panX = 0;
+      renderRepertoireMap();
+      return true;
+    }
     const rememberedEdge = state.repertoireMap.activePath[state.repertoireMap.cursor];
     const selectedEdge = edgeId || rememberedEdge;
     if (!selectedEdge) return false;
@@ -655,6 +748,7 @@ function bindRepertoireMapGestures() {
       startY: event.clientY,
       startCameraOffset: layout.cameraOffset,
       mapEdge: event.target.closest?.("[data-map-edge]")?.dataset.mapEdge || null,
+      mapDepth: Number(event.target.closest?.("[data-map-edge]")?.dataset.mapDepth),
       mapAction: event.target.closest?.("[data-map-action]")?.dataset.mapAction || null,
       moved: false,
     };
@@ -690,7 +784,8 @@ function bindRepertoireMapGestures() {
     if (!cancelled && distance < 12 && (completed.mapEdge || completed.mapAction)) {
       state.repertoireMap.suppressClickUntil = Date.now() + 260;
       if (completed.mapAction === "previous") navigateRepertoireMap("back");
-      else navigateRepertoireMap("forward", completed.mapEdge);
+      else if (completed.mapAction === "root") navigateRepertoireMap("root");
+      else navigateRepertoireMap("forward", completed.mapEdge, completed.mapDepth);
       return;
     }
     if (completed.moved) state.repertoireMap.suppressClickUntil = Date.now() + 260;
