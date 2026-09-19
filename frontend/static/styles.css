@@ -1123,6 +1123,22 @@ input[type="number"] {
   opacity: var(--edge-opacity);
 }
 
+.map-camera {
+  will-change: transform;
+}
+
+.map-camera.dragging {
+  transition: none;
+}
+
+.map-camera.snapping {
+  transition: transform 180ms cubic-bezier(.22, .8, .3, 1);
+}
+
+.map-node-slot {
+  will-change: transform, opacity;
+}
+
 .map-edge-count {
   fill: var(--muted);
   font-size: 9px;
@@ -1171,6 +1187,15 @@ input[type="number"] {
 
 .map-node.deviation > circle {
   stroke-dasharray: 3 3;
+}
+
+.map-node.retained > circle {
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--accent) 32%, transparent));
+}
+
+.retained-route-mark {
+  fill: var(--accent);
+  stroke: none !important;
 }
 
 .map-node text {
@@ -1229,6 +1254,14 @@ input[type="number"] {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-camera,
+  .map-node-slot,
+  .map-node circle {
+    transition: none !important;
+  }
 }
 
 .map-empty-text {

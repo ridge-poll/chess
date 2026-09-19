@@ -7,7 +7,16 @@ const state = {
   queue: null,
   openingStats: [],
   repertoireGraphs: { white: null, black: null },
-  repertoireMap: { color: "white", activePath: [], loading: false, requestId: 0 },
+  repertoireMap: {
+    color: "white",
+    activePath: [],
+    cursor: 0,
+    loading: false,
+    requestId: 0,
+    layout: null,
+    panX: 0,
+    suppressClickUntil: 0,
+  },
   profiles: [],
   activeProfile: null,
   openingSortBy: "most_played",
@@ -214,6 +223,9 @@ async function loadAll() {
   state.openingStats = openingStats || [];
   state.repertoireGraphs = { white: null, black: null };
   state.repertoireMap.activePath = [];
+  state.repertoireMap.cursor = 0;
+  state.repertoireMap.layout = null;
+  state.repertoireMap.panX = 0;
   renderDashboard();
   renderProfiles();
   renderGames();
@@ -315,6 +327,9 @@ async function openRepertoireMap(color) {
   const requestId = state.repertoireMap.requestId + 1;
   state.repertoireMap.color = selectedColor;
   state.repertoireMap.activePath = [];
+  state.repertoireMap.cursor = 0;
+  state.repertoireMap.layout = null;
+  state.repertoireMap.panX = 0;
   state.repertoireMap.requestId = requestId;
   localStorage.setItem(repertoireColorStorageKey(), selectedColor);
   setView("repertoireMap");
@@ -340,10 +355,17 @@ function currentRepertoireGraph() {
   return state.repertoireGraphs[state.repertoireMap.color];
 }
 
+function activeRepertoireEdges(graph = currentRepertoireGraph()) {
+  if (!graph) return [];
+  return state.repertoireMap.activePath
+    .slice(0, state.repertoireMap.cursor)
+    .map((edgeId) => graph.edges[edgeId])
+    .filter(Boolean);
+}
+
 function currentRepertoirePosition(graph = currentRepertoireGraph()) {
   if (!graph) return null;
-  const lastEdgeId = state.repertoireMap.activePath.at(-1);
-  const lastEdge = lastEdgeId ? graph.edges[lastEdgeId] : null;
+  const lastEdge = activeRepertoireEdges(graph).at(-1) || null;
   return graph.positions[lastEdge?.child_position_id || graph.root_position_id] || null;
 }
 
@@ -365,7 +387,7 @@ function renderRepertoireMap() {
   }
   const position = currentRepertoirePosition(graph);
   if (!position) return;
-  const pathEdges = state.repertoireMap.activePath.map((edgeId) => graph.edges[edgeId]).filter(Boolean);
+  const pathEdges = activeRepertoireEdges(graph);
   els.repertoireMapPath.textContent = pathEdges.length ? pathEdges.map((edge) => edge.san).join("  ·  ") : "Starting position";
   els.repertoireMapOpening.textContent = position.opening || "Opening not identified";
   els.repertoireMapBoard.innerHTML = renderBoardSquares(position.fen || STARTING_FEN, color);
@@ -373,29 +395,52 @@ function renderRepertoireMap() {
     <span><strong>${position.games}</strong><small>games</small></span>
     <span><strong>${position.score_pct == null ? "-" : `${position.score_pct}%`}</strong><small>score</small></span>
     <span><strong>${position.average_accuracy == null ? "-" : `${position.average_accuracy}%`}</strong><small>accuracy</small></span>`;
-  els.repertoireMapSvg.innerHTML = renderRepertoireMapSvg(graph, position, pathEdges);
+  const previousLayout = state.repertoireMap.layout;
+  const map = buildRepertoireMapSvg(graph, position, pathEdges);
+  els.repertoireMapSvg.setAttribute("viewBox", `0 0 ${map.layout.width} 500`);
+  els.repertoireMapSvg.innerHTML = `
+    <g class="map-camera" style="transform:translate(${map.layout.cameraOffset}px, 0px)">
+      ${map.markup}
+    </g>`;
+  state.repertoireMap.layout = map.layout;
   bindRepertoireMapNodes();
+  animateRepertoireMap(previousLayout, map.layout);
 }
 
-function renderRepertoireMapSvg(graph, position, pathEdges) {
+function buildRepertoireMapSvg(graph, position, pathEdges) {
+  const width = els.repertoireMapStage.clientWidth >= 680 ? 720 : 390;
   if (!position.games) {
-    return `<text class="map-empty-text" x="195" y="250" text-anchor="middle">No ${escapeHtml(state.repertoireMap.color)} games yet.</text>`;
+    return {
+      markup: `<text class="map-empty-text" x="${width / 2}" y="250" text-anchor="middle">No ${escapeHtml(state.repertoireMap.color)} games yet.</text>`,
+      layout: emptyRepertoireLayout(width),
+    };
   }
-  const width = 390;
-  const centerX = width / 2;
   const previousEdge = pathEdges.at(-1) || null;
   const previousPosition = previousEdge ? graph.positions[previousEdge.parent_position_id] : null;
-  const outgoing = (position.outgoing_edge_ids || [])
+  const retainedEdgeId = state.repertoireMap.activePath[state.repertoireMap.cursor] || null;
+  const allOutgoing = (position.outgoing_edge_ids || [])
     .map((edgeId) => graph.edges[edgeId])
     .filter(Boolean)
-    .sort((left, right) => right.games - left.games)
-    .slice(0, 5);
-  const childXs = spreadMapNodes(outgoing.length, width);
+    .sort((left, right) => right.games - left.games);
+  const outgoing = allOutgoing.slice(0, 7);
+  if (retainedEdgeId && !outgoing.some((edge) => edge.id === retainedEdgeId)) {
+    const retained = graph.edges[retainedEdgeId];
+    if (retained?.parent_position_id === position.id) outgoing.splice(Math.max(0, outgoing.length - 1), 1, retained);
+  }
+  const virtualWidth = width < 600 ? Math.max(width, 64 + outgoing.length * 82) : width;
+  const baseOffset = (width - virtualWidth) / 2;
+  const minCameraOffset = Math.min(0, width - virtualWidth - 16);
+  const maxCameraOffset = virtualWidth > width ? 16 : 0;
+  const cameraOffset = clampNumber(baseOffset + state.repertoireMap.panX, minCameraOffset, maxCameraOffset);
+  state.repertoireMap.panX = cameraOffset - baseOffset;
+  const centerX = virtualWidth / 2;
+  const childXs = spreadMapNodes(outgoing.length, virtualWidth);
   const previousY = 70;
   const focusY = 225;
   const childY = 405;
   const edgeMarkup = [];
   const nodeMarkup = [];
+  const positions = {};
 
   if (previousEdge && previousPosition) {
     const previousNodeEdge = pathEdges.at(-2) || null;
@@ -407,9 +452,11 @@ function renderRepertoireMapSvg(graph, position, pathEdges) {
       label: previousNodeEdge?.san || "Start",
       edge: previousNodeEdge,
       position: previousPosition,
+      positionId: previousPosition.id,
       role: "previous",
       action: "previous",
     }));
+    positions[previousPosition.id] = mapPosition(centerX, previousY, cameraOffset);
   }
 
   nodeMarkup.push(renderMapNode({
@@ -419,8 +466,10 @@ function renderRepertoireMapSvg(graph, position, pathEdges) {
     label: previousEdge?.san || "Start",
     edge: previousEdge,
     position,
+    positionId: position.id,
     role: "focus",
   }));
+  positions[position.id] = mapPosition(centerX, focusY, cameraOffset);
 
   outgoing.forEach((edge, index) => {
     const childPosition = graph.positions[edge.child_position_id];
@@ -433,14 +482,44 @@ function renderRepertoireMapSvg(graph, position, pathEdges) {
       label: edge.san,
       edge,
       position: childPosition,
+      positionId: childPosition.id,
       role: "next",
       edgeId: edge.id,
+      retained: edge.id === retainedEdgeId,
     }));
+    positions[childPosition.id] = mapPosition(childX, childY, cameraOffset);
   });
   if (!outgoing.length) {
     nodeMarkup.push(`<text class="map-empty-text" x="${centerX}" y="405" text-anchor="middle">End of observed line</text>`);
   }
-  return `<g class="map-edges">${edgeMarkup.join("")}</g><g class="map-nodes">${nodeMarkup.join("")}</g>`;
+  return {
+    markup: `<g class="map-edges">${edgeMarkup.join("")}</g><g class="map-nodes">${nodeMarkup.join("")}</g>`,
+    layout: {
+      width,
+      virtualWidth,
+      baseOffset,
+      cameraOffset,
+      minCameraOffset,
+      maxCameraOffset,
+      positions,
+    },
+  };
+}
+
+function emptyRepertoireLayout(width) {
+  return {
+    width,
+    virtualWidth: width,
+    baseOffset: 0,
+    cameraOffset: 0,
+    minCameraOffset: 0,
+    maxCameraOffset: 0,
+    positions: {},
+  };
+}
+
+function mapPosition(x, y, cameraOffset) {
+  return { x, y, screenX: x + cameraOffset };
 }
 
 function spreadMapNodes(count, width) {
@@ -472,33 +551,32 @@ function renderMapEdge(edge, startX, startY, endX, endY, showCount) {
     </g>`;
 }
 
-function renderMapNode({ x, y, radius, label, edge, position, role, edgeId = "", action = "" }) {
+function renderMapNode({ x, y, radius, label, edge, position, positionId, role, edgeId = "", action = "", retained = false }) {
   const moverColor = edge?.mover_color || "white";
   const ownership = edge?.is_user_move ? "user-move" : "opponent-move";
   const deviation = edge?.book_status === "deviation" ? "deviation" : "";
   const transposition = position?.is_transposition;
   const interactive = Boolean(edgeId || action);
   return `
-    <g class="map-node ${role} ${moverColor}-move ${ownership} ${deviation} ${interactive ? "interactive" : ""}"
-      transform="translate(${x} ${y})"
-      ${edgeId ? `data-map-edge="${escapeHtml(edgeId)}"` : ""}
-      ${action ? `data-map-action="${escapeHtml(action)}"` : ""}
-      ${interactive ? `role="treeitem" tabindex="0" aria-label="${escapeHtml(label)}"` : ""}>
-      <circle r="${radius}"></circle>
-      <text text-anchor="middle" dominant-baseline="central">${escapeHtml(label)}</text>
-      ${transposition ? `<g class="transposition-mark" transform="translate(${radius - 3} ${-radius + 3})"><circle r="5"></circle><circle r="2"></circle></g>` : ""}
+    <g class="map-node-slot" data-map-position="${escapeHtml(positionId)}" style="transform:translate(${x}px, ${y}px)">
+      <g class="map-node ${role} ${moverColor}-move ${ownership} ${deviation} ${retained ? "retained" : ""} ${interactive ? "interactive" : ""}"
+        ${edgeId ? `data-map-edge="${escapeHtml(edgeId)}"` : ""}
+        ${action ? `data-map-action="${escapeHtml(action)}"` : ""}
+        ${interactive ? `role="treeitem" tabindex="0" aria-label="${escapeHtml(label)}"` : ""}>
+        <circle r="${radius}"></circle>
+        <text text-anchor="middle" dominant-baseline="central">${escapeHtml(label)}</text>
+        ${retained ? `<circle class="retained-route-mark" cy="${radius + 8}" r="2"></circle>` : ""}
+        ${transposition ? `<g class="transposition-mark" transform="translate(${radius - 3} ${-radius + 3})"><circle r="5"></circle><circle r="2"></circle></g>` : ""}
+      </g>
     </g>`;
 }
 
 function bindRepertoireMapNodes() {
   els.repertoireMapSvg.querySelectorAll("[data-map-edge], [data-map-action]").forEach((node) => {
     const select = () => {
-      if (node.dataset.mapAction === "previous") {
-        state.repertoireMap.activePath.pop();
-      } else if (node.dataset.mapEdge) {
-        state.repertoireMap.activePath.push(node.dataset.mapEdge);
-      }
-      renderRepertoireMap();
+      if (Date.now() < state.repertoireMap.suppressClickUntil) return;
+      if (node.dataset.mapAction === "previous") navigateRepertoireMap("back");
+      else if (node.dataset.mapEdge) navigateRepertoireMap("forward", node.dataset.mapEdge);
     };
     node.addEventListener("click", select);
     node.addEventListener("keydown", (event) => {
@@ -507,6 +585,154 @@ function bindRepertoireMapNodes() {
         select();
       }
     });
+  });
+}
+
+function navigateRepertoireMap(direction, edgeId = null) {
+  if (direction === "back") {
+    if (state.repertoireMap.cursor <= 0) return false;
+    state.repertoireMap.cursor -= 1;
+  } else if (direction === "forward") {
+    const rememberedEdge = state.repertoireMap.activePath[state.repertoireMap.cursor];
+    const selectedEdge = edgeId || rememberedEdge;
+    if (!selectedEdge) return false;
+    if (selectedEdge !== rememberedEdge) {
+      state.repertoireMap.activePath = [
+        ...state.repertoireMap.activePath.slice(0, state.repertoireMap.cursor),
+        selectedEdge,
+      ];
+    }
+    state.repertoireMap.cursor += 1;
+  } else {
+    return false;
+  }
+  state.repertoireMap.transitionDirection = direction;
+  state.repertoireMap.panX = 0;
+  renderRepertoireMap();
+  return true;
+}
+
+function animateRepertoireMap(previousLayout, nextLayout) {
+  const direction = state.repertoireMap.transitionDirection;
+  state.repertoireMap.transitionDirection = null;
+  if (!previousLayout || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  els.repertoireMapSvg.querySelectorAll(".map-node-slot").forEach((slot) => {
+    const positionId = slot.dataset.mapPosition;
+    const previous = previousLayout.positions[positionId];
+    const next = nextLayout.positions[positionId];
+    if (!next) return;
+    const startX = previous ? previous.screenX - nextLayout.cameraOffset : next.x;
+    const startY = previous ? previous.y : next.y + (direction === "back" ? -34 : 34);
+    slot.animate(
+      [
+        { transform: `translate(${startX}px, ${startY}px)`, opacity: previous ? 0.72 : 0 },
+        { transform: `translate(${next.x}px, ${next.y}px)`, opacity: 1 },
+      ],
+      { duration: 260, easing: "cubic-bezier(.22,.8,.3,1)" },
+    );
+  });
+  els.repertoireMapSvg.querySelectorAll(".map-edge-group").forEach((edge) => {
+    edge.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 210, easing: "ease-out" });
+  });
+  els.repertoireMapBoard.animate([{ opacity: 0.55 }, { opacity: 1 }], { duration: 180, easing: "ease-out" });
+}
+
+function clampNumber(value, minimum, maximum) {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function bindRepertoireMapGestures() {
+  let drag = null;
+  const stage = els.repertoireMapStage;
+  const camera = () => els.repertoireMapSvg.querySelector(".map-camera");
+
+  stage.addEventListener("pointerdown", (event) => {
+    if (state.activeView !== "repertoireMap" || event.button !== 0 || !state.repertoireMap.layout) return;
+    const layout = state.repertoireMap.layout;
+    drag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startCameraOffset: layout.cameraOffset,
+      mapEdge: event.target.closest?.("[data-map-edge]")?.dataset.mapEdge || null,
+      mapAction: event.target.closest?.("[data-map-action]")?.dataset.mapAction || null,
+      moved: false,
+    };
+    stage.setPointerCapture(event.pointerId);
+    camera()?.classList.add("dragging");
+  });
+
+  stage.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const layout = state.repertoireMap.layout;
+    const dxPixels = event.clientX - drag.startX;
+    const dyPixels = event.clientY - drag.startY;
+    if (Math.hypot(dxPixels, dyPixels) > 12) drag.moved = true;
+    const dx = dxPixels * layout.width / Math.max(1, stage.clientWidth);
+    const dy = clampNumber(dyPixels * 500 / Math.max(1, stage.clientHeight), -82, 82);
+    const offset = clampNumber(
+      drag.startCameraOffset + dx,
+      layout.minCameraOffset - 18,
+      layout.maxCameraOffset + 18,
+    );
+    const target = camera();
+    if (target) target.style.transform = `translate(${offset}px, ${dy}px)`;
+  });
+
+  const finishDrag = (event, cancelled = false) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const completed = drag;
+    drag = null;
+    const layout = state.repertoireMap.layout;
+    const dxPixels = event.clientX - completed.startX;
+    const dyPixels = event.clientY - completed.startY;
+    const distance = Math.hypot(dxPixels, dyPixels);
+    if (!cancelled && distance < 12 && (completed.mapEdge || completed.mapAction)) {
+      state.repertoireMap.suppressClickUntil = Date.now() + 260;
+      if (completed.mapAction === "previous") navigateRepertoireMap("back");
+      else navigateRepertoireMap("forward", completed.mapEdge);
+      return;
+    }
+    if (completed.moved) state.repertoireMap.suppressClickUntil = Date.now() + 260;
+
+    const verticalSwipe = !cancelled && Math.abs(dyPixels) >= 54 && Math.abs(dyPixels) > Math.abs(dxPixels) * 1.12;
+    if (verticalSwipe) {
+      const moved = dyPixels > 0
+        ? navigateRepertoireMap("back")
+        : navigateRepertoireMap("forward");
+      if (moved) return;
+    }
+
+    const dx = dxPixels * layout.width / Math.max(1, stage.clientWidth);
+    const settledOffset = cancelled
+      ? layout.cameraOffset
+      : clampNumber(completed.startCameraOffset + dx, layout.minCameraOffset, layout.maxCameraOffset);
+    state.repertoireMap.panX = settledOffset - layout.baseOffset;
+    const screenShift = settledOffset - layout.cameraOffset;
+    layout.cameraOffset = settledOffset;
+    Object.values(layout.positions).forEach((position) => {
+      position.screenX += screenShift;
+    });
+    const target = camera();
+    if (!target) return;
+    target.classList.remove("dragging");
+    target.classList.add("snapping");
+    target.style.transform = `translate(${settledOffset}px, 0px)`;
+    setTimeout(() => target.classList.remove("snapping"), 200);
+  };
+
+  stage.addEventListener("pointerup", (event) => finishDrag(event));
+  stage.addEventListener("pointercancel", (event) => finishDrag(event, true));
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (state.activeView !== "repertoireMap") return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      state.repertoireMap.layout = null;
+      state.repertoireMap.panX = 0;
+      renderRepertoireMap();
+    }, 100);
   });
 }
 
@@ -2592,4 +2818,5 @@ function timeRank(timeClass) {
 }
 
 updateThemeButton();
+bindRepertoireMapGestures();
 loadAll().catch((error) => showStatus(error.message, 8000));
