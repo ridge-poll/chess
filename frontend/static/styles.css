@@ -1707,6 +1707,16 @@ input[type="number"] {
   padding: max(10px, env(safe-area-inset-top)) 14px 8px;
 }
 
+.workspace-back-link {
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
 .analysis-panel {
   margin-bottom: 12px;
 }
@@ -2253,6 +2263,13 @@ input[type="number"] {
   text-transform: none;
 }
 
+.engine-heading small {
+  margin-left: 5px;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
 .engine-candidate {
   display: grid;
   grid-template-columns: 22px minmax(48px, auto) auto;
@@ -2293,6 +2310,40 @@ input[type="number"] {
   font-size: 0.8rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.board-first-panel .engine-candidates {
+  gap: 0;
+}
+
+.board-first-panel .engine-heading {
+  min-height: 34px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+}
+
+.board-first-panel .engine-candidate {
+  grid-template-columns: minmax(48px, 0.7fr) 58px minmax(0, 2.3fr);
+  gap: 10px;
+  min-height: 44px;
+  padding: 5px 0;
+}
+
+.board-first-panel .engine-rank {
+  display: none;
+}
+
+.board-first-panel .engine-move {
+  font-size: 0.92rem;
+}
+
+.board-first-panel .engine-candidate > strong {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-first-panel .engine-pv {
+  grid-column: auto;
+  font-size: 0.75rem;
 }
 
 .engine-skeleton {

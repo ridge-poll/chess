@@ -1833,8 +1833,8 @@ function renderEnginePanel(boardId, panel, game = {}, allowPlay = false) {
   const candidates = engine.candidates || [];
   return `
     <div class="engine-heading">
-      <span>Engine</span>
-      <strong>${escapeHtml(advantageLabel(engine.score_cp, engine.mate))}</strong>
+      <span>Engine <small>Depth ${escapeHtml(engine.depth || "-")}</small></span>
+      <strong>${escapeHtml(formatEngineEval(engine.score_cp, engine.mate))}</strong>
     </div>
     ${candidates.length ? candidates.map((candidate) => `
       <button
@@ -1845,11 +1845,18 @@ function renderEnginePanel(boardId, panel, game = {}, allowPlay = false) {
       >
         <span class="engine-rank">${candidate.rank}</span>
         <span class="engine-move">${escapeHtml(candidate.san || candidate.uci || "-")}</span>
-        <strong>${escapeHtml(advantageLabel(candidate.score_cp, candidate.mate))}</strong>
+        <strong>${escapeHtml(formatEngineEval(candidate.score_cp, candidate.mate))}</strong>
         <span class="engine-pv">${escapeHtml((candidate.pv_san || []).slice(1, 6).join(" "))}</span>
       </button>
     `).join("") : `<div class="stat-subtitle">No legal engine candidates.</div>`}
   `;
+}
+
+function formatEngineEval(cp, mate) {
+  if (mate != null) return mate === 0 ? "Mate" : `${mate > 0 ? "+" : "-"}M${Math.abs(mate)}`;
+  if (cp == null) return "-";
+  const pawns = Number(cp) / 100;
+  return `${pawns > 0 ? "+" : ""}${pawns.toFixed(2)}`;
 }
 
 function bindEngineCandidateInteractions(boardId, allowPlay) {
@@ -1968,8 +1975,9 @@ async function openBlankAnalysisBoard() {
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
   });
   applyAnalysisWorkspace(workspace, null);
+  await refreshAnalysisOpeningName();
   renderAnalysisBoard();
-  els.backFromAnalysis.textContent = state.analysisReturnView === "more" ? "< More" : "< Games";
+  els.backFromAnalysis.textContent = state.analysisReturnView === "more" ? "‹ More" : "‹ Games";
   setView("analysis");
 }
 
@@ -1977,8 +1985,9 @@ async function openGameAnalysisBoard(gameId) {
   state.analysisReturnView = "detail";
   const workspace = await api(`/api/board/games/${gameId}${profileParam()}`);
   applyAnalysisWorkspace(workspace, workspace.game || null);
+  await refreshAnalysisOpeningName();
   renderAnalysisBoard();
-  els.backFromAnalysis.textContent = "< Game";
+  els.backFromAnalysis.textContent = "‹ Game";
   setView("analysis");
 }
 
@@ -1997,8 +2006,9 @@ async function openGameAnalysisBoardFromPly(ply) {
     }),
   });
   applyAnalysisWorkspace({ ...selectedWorkspace, game: workspace.game }, workspace.game || null);
+  await refreshAnalysisOpeningName();
   renderAnalysisBoard();
-  els.backFromAnalysis.textContent = "< Game";
+  els.backFromAnalysis.textContent = "‹ Game";
   setView("analysis");
 }
 
@@ -2006,8 +2016,27 @@ function applyAnalysisWorkspace(workspace, sourceGame = undefined) {
   state.analysisBoard = {
     ...workspace,
     sourceGame: sourceGame === undefined ? state.analysisBoard?.sourceGame || null : sourceGame,
+    openingName: state.analysisBoard?.openingName || "Starting position",
     selectedSquare: null,
   };
+}
+
+async function refreshAnalysisOpeningName() {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const sans = (boardState.move_history || [])
+    .slice(0, Number(boardState.selected_ply) || 0)
+    .map((move) => move.san)
+    .filter(Boolean);
+  if (!sans.length) {
+    boardState.openingName = "Starting position";
+    return;
+  }
+  const result = await api("/api/openings/detect", {
+    method: "POST",
+    body: JSON.stringify({ sans }),
+  });
+  boardState.openingName = result.opening || "Opening not identified";
 }
 
 function renderAnalysisBoard() {
@@ -2037,7 +2066,7 @@ function renderAnalysisBoard() {
     enginePanel: state.enginePanels.analysisBoard,
     allowInteraction: true,
     boardFirst: true,
-    positionTitle: source ? `${source.white || "White"} vs ${source.black || "Black"}` : "Analysis position",
+    positionTitle: boardState.openingName || "Opening not identified",
     statusLabel: positionStatusText(boardState),
     timelineAttribute: "data-analysis-ply",
   });
@@ -2086,6 +2115,8 @@ function updateAnalysisBoard() {
   const current = document.querySelector('[data-board-current="analysisBoard"]');
   if (!current) return;
   current.textContent = positionStatusText(boardState);
+  const title = document.querySelector('[data-board-position-title="analysisBoard"]');
+  if (title) title.textContent = boardState.openingName || "Opening not identified";
   requestPositionEngine("analysisBoard", boardState.fen, {}, true);
 }
 
@@ -2148,6 +2179,7 @@ async function selectAnalysisPly(ply) {
     }),
   });
   applyAnalysisWorkspace(workspace);
+  await refreshAnalysisOpeningName();
   renderAnalysisBoard();
 }
 
@@ -2157,6 +2189,7 @@ async function resetAnalysisBoard() {
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
   });
   applyAnalysisWorkspace(workspace, null);
+  await refreshAnalysisOpeningName();
   renderAnalysisBoard();
 }
 
@@ -2201,6 +2234,7 @@ async function playAnalysisUci(uci) {
     }),
   });
   applyAnalysisWorkspace(workspace);
+  await refreshAnalysisOpeningName();
   renderAnalysisBoard();
 }
 
@@ -2269,7 +2303,10 @@ function applyOpeningExplorerWorkspace(workspace, openingName = undefined) {
 async function refreshOpeningName() {
   const explorer = state.openingExplorer;
   if (!explorer) return;
-  const sans = (explorer.move_history || []).map((move) => move.san).filter(Boolean);
+  const sans = (explorer.move_history || [])
+    .slice(0, Number(explorer.selected_ply) || 0)
+    .map((move) => move.san)
+    .filter(Boolean);
   if (!sans.length) {
     explorer.openingName = "Starting position";
     return;
@@ -2969,7 +3006,7 @@ els.gameList.addEventListener("keydown", async (event) => {
 
 els.backToGames.addEventListener("click", () => setView("games"));
 
-els.backFromOpening.addEventListener("click", () => setView("home"));
+els.backFromOpening.addEventListener("click", () => setView("openings"));
 
 els.backFromAnalysis.addEventListener("click", () => {
   setView(state.analysisReturnView || (state.selectedGameId ? "detail" : "games"));
