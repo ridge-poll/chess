@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=30" />
-    <link rel="icon" href="/static/logo.png?v=30" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=30" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=32" />
+    <link rel="icon" href="/static/logo.png?v=32" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=32" />
   </head>
   <body>
     <div id="app">
@@ -168,10 +168,10 @@
         <section class="view board-workspace-view" id="openingExplorerView">
           <section class="opening-explorer-shell">
             <div class="opening-explorer-heading">
-              <button class="text-button workspace-back-button" id="backFromOpening">&lt; Openings</button>
+              <button class="workspace-icon-button" id="backFromOpening" aria-label="Back" title="Back">‹</button>
               <div>
-                <p class="eyebrow">Opening Explorer</p>
-                <h2 id="openingExplorerName">Opening not identified</h2>
+                <p class="eyebrow">Workspace</p>
+                <h2>Opening Explorer</h2>
               </div>
               <span class="pill" id="openingExplorerPly">Start</span>
             </div>
@@ -376,6 +376,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=30" type="module"></script>
+    <script src="/static/app.js?v=32" type="module"></script>
   </body>
 </html>

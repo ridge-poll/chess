@@ -110,7 +110,6 @@ const els = {
   repertoireMapLoading: document.querySelector("#repertoireMapLoading"),
   repertoireMapSvg: document.querySelector("#repertoireMapSvg"),
   openingExplorerMount: document.querySelector("#openingExplorerMount"),
-  openingExplorerName: document.querySelector("#openingExplorerName"),
   openingExplorerPly: document.querySelector("#openingExplorerPly"),
   startOpeningExplorerButton: document.querySelector("#startOpeningExplorerButton"),
   importButton: document.querySelector("#importButton"),
@@ -1555,6 +1554,7 @@ function updateExplorerBoard(selected) {
 }
 
 function renderBoardComponent(config) {
+  if (config.boardFirst) return renderBoardFirstComponent(config);
   const orientation = config.orientation || "white";
   const positions = config.positions || [];
   const timelineAttribute = config.timelineAttribute || "data-explorer-ply";
@@ -1605,6 +1605,72 @@ function renderBoardComponent(config) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderBoardFirstComponent(config) {
+  const orientation = config.orientation || "white";
+  const positions = config.positions || [];
+  const timelineAttribute = config.timelineAttribute || "data-explorer-ply";
+  return `
+    <section class="board-panel board-first-panel" data-board-component="${escapeHtml(config.id)}" data-board-mode="${escapeHtml(config.mode || "analysis")}">
+      <div class="board-first-sequence" aria-label="Move sequence">
+        <button class="sequence-move start ${Number(config.selectedPly) === 0 ? "selected" : ""}" ${timelineAttribute}="0" aria-label="Starting position">Start</button>
+        ${positions.map((move) => `
+          <button class="sequence-move ${Number(move.ply) === Number(config.selectedPly) ? "selected" : ""}" ${timelineAttribute}="${move.ply}">
+            ${move.color === "white" ? `<span>${move.move_number}.</span>` : ""}${escapeHtml(move.san || move.uci || "")}
+          </button>
+        `).join("")}
+      </div>
+      <div class="board-first-layout">
+        <div class="chessboard-wrap" data-board-orientation="${escapeHtml(orientation)}">
+          <div class="board-rank-labels" data-board-ranks="${escapeHtml(config.id)}" aria-hidden="true">${renderRankLabels(orientation)}</div>
+          <div class="chessboard" id="chessboard-${escapeHtml(config.id)}" data-board-surface="${escapeHtml(config.id)}" aria-label="Chess board"></div>
+          <div class="board-file-labels" data-board-files="${escapeHtml(config.id)}" aria-hidden="true">${renderFileLabels(orientation)}</div>
+        </div>
+        <section class="board-first-details">
+          <div class="position-heading">
+            <div>
+              <span data-board-current="${escapeHtml(config.id)}">${escapeHtml(config.statusLabel || "Position")}</span>
+              <h2 data-board-position-title="${escapeHtml(config.id)}">${escapeHtml(config.positionTitle || "Opening not identified")}</h2>
+            </div>
+            <span class="position-turn" data-board-indicator="${escapeHtml(config.id)}">${escapeHtml(config.indicator || "Start")}</span>
+          </div>
+          <div class="board-first-controls" aria-label="Position controls">
+            <button data-board-id="${escapeHtml(config.id)}" data-board-nav="start" title="Beginning" aria-label="Jump to beginning">|‹</button>
+            <button data-board-id="${escapeHtml(config.id)}" data-board-nav="prev" title="Previous" aria-label="Previous move">‹</button>
+            <button data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next" aria-label="Next move">›</button>
+            <button data-board-id="${escapeHtml(config.id)}" data-board-nav="end" title="End" aria-label="Jump to end">›|</button>
+            <span></span>
+            <button data-board-id="${escapeHtml(config.id)}" data-board-action="flip" title="Flip board" aria-label="Flip board">⇅</button>
+            <button data-board-id="${escapeHtml(config.id)}" data-board-action="reset" title="Reset" aria-label="Reset">↺</button>
+          </div>
+          ${config.lowerPanelHtml || `
+            <div class="engine-candidates board-first-panel-content" data-engine-panel="${escapeHtml(config.id)}">
+              ${renderEnginePanel(config.id, config.enginePanel || null, config.engineGame || {}, Boolean(config.allowEnginePlay))}
+            </div>
+          `}
+        </section>
+      </div>
+    </section>
+  `;
+}
+
+function renderOpeningContinuationPanel(explorer) {
+  const moves = (explorer.legal_moves || []).slice(0, 8);
+  return `
+    <div class="continuation-panel board-first-panel-content">
+      <div class="continuation-header"><span>Move</span><span>Games</span><span>White / Draw / Black</span></div>
+      <div class="continuation-list">
+        ${moves.map((move) => `
+          <button class="continuation-row" data-opening-continuation="${escapeHtml(move.uci)}">
+            <strong>${escapeHtml(move.san || move.uci)}</strong>
+            <span>—</span>
+            <span class="continuation-awaiting"><i></i><i></i><i></i></span>
+          </button>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -1902,8 +1968,10 @@ function renderAnalysisBoard() {
     allowEnginePlay: true,
     enginePanel: state.enginePanels.analysisBoard,
     allowInteraction: true,
+    boardFirst: true,
+    positionTitle: source ? `${source.white || "White"} vs ${source.black || "Black"}` : "Analysis position",
+    statusLabel: positionStatusText(boardState),
     timelineAttribute: "data-analysis-ply",
-    statusHtml: renderAnalysisStatus(boardState),
   });
   updateAnalysisBoard();
   bindAnalysisBoardInteractions();
@@ -1949,12 +2017,7 @@ function updateAnalysisBoard() {
 
   const current = document.querySelector('[data-board-current="analysisBoard"]');
   if (!current) return;
-  current.innerHTML = `
-    <div class="stat-title">${selected?.ply ? escapeHtml(moveLabel(selected)) : "Starting position"}</div>
-    <div class="stat-subtitle">
-      ${escapeHtml(positionStatusText(boardState))}
-    </div>
-  `;
+  current.textContent = positionStatusText(boardState);
   requestPositionEngine("analysisBoard", boardState.fen, {}, true);
 }
 
@@ -2123,7 +2186,7 @@ async function ensureOpeningExplorer() {
     method: "POST",
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
   });
-  applyOpeningExplorerWorkspace(workspace, "Opening not identified");
+  applyOpeningExplorerWorkspace(workspace, "Starting position");
   renderOpeningExplorer();
 }
 
@@ -2140,7 +2203,7 @@ async function refreshOpeningName() {
   if (!explorer) return;
   const sans = (explorer.move_history || []).map((move) => move.san).filter(Boolean);
   if (!sans.length) {
-    explorer.openingName = "Opening not identified";
+    explorer.openingName = "Starting position";
     return;
   }
   const result = await api("/api/openings/detect", {
@@ -2153,7 +2216,6 @@ async function refreshOpeningName() {
 function renderOpeningExplorer() {
   const explorer = state.openingExplorer;
   if (!explorer || !els.openingExplorerMount) return;
-  els.openingExplorerName.textContent = explorer.openingName || "Opening not identified";
   els.openingExplorerPly.textContent = explorer.selected_ply ? `${explorer.selected_ply} ply` : "Start";
   els.openingExplorerMount.innerHTML = renderBoardComponent({
     id: "openingExplorer",
@@ -2169,23 +2231,14 @@ function renderOpeningExplorer() {
     allowEnginePlay: true,
     enginePanel: state.enginePanels.openingExplorer,
     allowInteraction: true,
+    boardFirst: true,
+    positionTitle: explorer.openingName || "Opening not identified",
+    statusLabel: positionStatusText(explorer),
+    lowerPanelHtml: renderOpeningContinuationPanel(explorer),
     timelineAttribute: "data-opening-ply",
-    statusHtml: `
-      <div class="analysis-status-grid">
-        <div>
-          <span class="metric-label">Turn</span>
-          <strong>${escapeHtml(capitalize(explorer.turn || "white"))}</strong>
-        </div>
-        <div>
-          <span class="metric-label">Position</span>
-          <strong>${escapeHtml(positionStatusText(explorer))}</strong>
-        </div>
-      </div>
-    `,
   });
   updateOpeningExplorer();
   bindOpeningExplorerInteractions();
-  requestPositionEngine("openingExplorer", explorer.fen, {}, true);
 }
 
 function updateOpeningExplorer() {
@@ -2209,13 +2262,9 @@ function updateOpeningExplorer() {
   const indicator = document.querySelector('[data-board-indicator="openingExplorer"]');
   if (indicator) indicator.textContent = selected?.ply ? moveLabel(selected) : "Start";
   const current = document.querySelector('[data-board-current="openingExplorer"]');
-  if (current) {
-    current.innerHTML = `
-      <div class="stat-title">${selected?.ply ? escapeHtml(moveLabel(selected)) : "Starting position"}</div>
-      <div class="stat-subtitle">${escapeHtml(positionStatusText(explorer))}</div>
-    `;
-  }
-  requestPositionEngine("openingExplorer", explorer.fen, {}, true);
+  if (current) current.textContent = positionStatusText(explorer);
+  const title = document.querySelector('[data-board-position-title="openingExplorer"]');
+  if (title) title.textContent = explorer.openingName || "Opening not identified";
 }
 
 function bindOpeningExplorerInteractions() {
@@ -2245,7 +2294,11 @@ function bindOpeningExplorerInteractions() {
       await handleOpeningSquare(square);
     }
   });
-  bindEngineCandidateInteractions("openingExplorer", true);
+  document.querySelectorAll("[data-opening-continuation]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await playOpeningUci(button.dataset.openingContinuation);
+    });
+  });
 }
 
 async function navigateOpeningExplorer(action) {
@@ -2286,7 +2339,7 @@ async function resetOpeningExplorer() {
     method: "POST",
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
   });
-  applyOpeningExplorerWorkspace(workspace, "Opening not identified");
+  applyOpeningExplorerWorkspace(workspace, "Starting position");
   renderOpeningExplorer();
 }
 
@@ -2652,6 +2705,11 @@ if ("serviceWorker" in navigator) {
 
 els.navButtons.forEach((button) => {
   button.addEventListener("click", async () => {
+    if (button.dataset.view === "openings") {
+      await ensureOpeningExplorer();
+      setView("openingExplorer");
+      return;
+    }
     setView(button.dataset.view);
   });
 });
@@ -2846,7 +2904,7 @@ els.gameList.addEventListener("keydown", async (event) => {
 
 els.backToGames.addEventListener("click", () => setView("games"));
 
-els.backFromOpening.addEventListener("click", () => setView("openings"));
+els.backFromOpening.addEventListener("click", () => setView("home"));
 
 els.backFromAnalysis.addEventListener("click", () => {
   setView(state.analysisReturnView || (state.selectedGameId ? "detail" : "games"));
