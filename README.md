@@ -19,6 +19,7 @@ The app is intentionally local-first: FastAPI serves the backend and frontend, S
 - Review saved games with a board, move list, quality summary, and user-perspective evaluation graph.
 - Open any saved game position in a temporary analysis board without mutating the stored game.
 - Use a standalone Analysis Board and Opening Explorer with legal move input.
+- Explore master-game continuations through the authenticated Lichess Opening Explorer API.
 - View top engine candidates in board workspaces.
 - Browse opening statistics, time-control statistics, trends, and game history.
 - Use the app comfortably on a phone with bottom navigation, dark mode, and PWA app-shell caching.
@@ -72,6 +73,9 @@ Environment variables:
 - `STOCKFISH_PATH`: path to the Stockfish binary. Defaults to `stockfish`.
 - `STOCKFISH_DEPTH`: default analysis depth. Defaults to `10`.
 - `CHESS_ANALYTICS_DB`: SQLite database path. Defaults to `backend/data/chess_analytics.sqlite3`.
+- `LICHESS_API_TOKEN`: Lichess OAuth or personal API token used for master opening data.
+- `LICHESS_EXPLORER_URL`: optional Opening Explorer endpoint override.
+- `OPENING_EXPLORER_CACHE_SECONDS`: successful master-position cache lifetime. Defaults to six hours.
 
 Example:
 
@@ -79,8 +83,13 @@ Example:
 export STOCKFISH_PATH=/opt/homebrew/bin/stockfish
 export STOCKFISH_DEPTH=12
 export CHESS_ANALYTICS_DB="$PWD/data/chess_analytics.sqlite3"
+export LICHESS_API_TOKEN="your-token"
 uvicorn app.main:app --reload --port 8000
 ```
+
+Lichess currently requires authentication for its Opening Explorer endpoints. Without
+`LICHESS_API_TOKEN`, the board remains fully functional and displays legal continuations
+without master-game counts until credentials are configured.
 
 ## Testing
 

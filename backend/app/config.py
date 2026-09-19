@@ -16,6 +16,12 @@ class Settings:
     )
     stockfish_path: str = os.environ.get("STOCKFISH_PATH", "stockfish")
     default_depth: int = int(os.environ.get("STOCKFISH_DEPTH", "10"))
+    lichess_api_token: str = os.environ.get("LICHESS_API_TOKEN", "")
+    lichess_explorer_url: str = os.environ.get(
+        "LICHESS_EXPLORER_URL",
+        "https://explorer.lichess.org/masters",
+    )
+    opening_explorer_cache_seconds: int = int(os.environ.get("OPENING_EXPLORER_CACHE_SECONDS", "21600"))
 
 
 settings = Settings()

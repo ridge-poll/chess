@@ -45,6 +45,7 @@ const state = {
   },
   analysisBoard: null,
   openingExplorer: null,
+  masterExplorer: { fen: null, loading: false, data: null, error: null, requestId: 0 },
   pollTimer: null,
   pendingDeleteGameId: null,
 };
@@ -1657,21 +1658,88 @@ function renderBoardFirstComponent(config) {
 }
 
 function renderOpeningContinuationPanel(explorer) {
-  const moves = (explorer.legal_moves || []).slice(0, 8);
+  const panel = state.masterExplorer.fen === explorer.fen ? state.masterExplorer : null;
+  if (!panel || panel.loading) {
+    return `
+      <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
+        <div class="continuation-header"><span>Move</span><span>Games</span><span>White / Draw / Black</span></div>
+        ${Array.from({ length: 5 }, () => `<div class="continuation-skeleton"><i></i><i></i><i></i></div>`).join("")}
+      </div>`;
+  }
+  const moves = panel.data?.moves?.length ? panel.data.moves : (explorer.legal_moves || []).slice(0, 8);
+  const hasMasterData = Boolean(panel.data?.moves?.length);
   return `
-    <div class="continuation-panel board-first-panel-content">
+    <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
+      ${panel.error ? `<div class="continuation-notice"><span>${escapeHtml(panel.error)}</span><button data-master-retry>Retry</button></div>` : ""}
       <div class="continuation-header"><span>Move</span><span>Games</span><span>White / Draw / Black</span></div>
       <div class="continuation-list">
         ${moves.map((move) => `
           <button class="continuation-row" data-opening-continuation="${escapeHtml(move.uci)}">
             <strong>${escapeHtml(move.san || move.uci)}</strong>
-            <span>—</span>
-            <span class="continuation-awaiting"><i></i><i></i><i></i></span>
+            <span>${hasMasterData ? formatCompactCount(move.games) : "—"}</span>
+            ${hasMasterData ? renderExplorerWdb(move) : `<span class="continuation-awaiting"><i></i><i></i><i></i></span>`}
           </button>
         `).join("")}
       </div>
     </div>
   `;
+}
+
+function renderExplorerWdb(move) {
+  const total = Math.max(1, Number(move.white || 0) + Number(move.draws || 0) + Number(move.black || 0));
+  const white = Number(move.white || 0) / total * 100;
+  const draws = Number(move.draws || 0) / total * 100;
+  const black = Math.max(0, 100 - white - draws);
+  const label = `White ${white.toFixed(0)}%, draw ${draws.toFixed(0)}%, Black ${black.toFixed(0)}%`;
+  return `<span class="continuation-wdb" role="img" aria-label="${label}">
+    <i class="white" style="width:${white}%"></i><i class="draw" style="width:${draws}%"></i><i class="black" style="width:${black}%"></i>
+  </span>`;
+}
+
+function formatCompactCount(value) {
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(Number(value) || 0);
+}
+
+async function requestMasterExplorer(force = false) {
+  const explorer = state.openingExplorer;
+  if (!explorer?.fen) return;
+  const current = state.masterExplorer;
+  if (!force && current.fen === explorer.fen && (current.loading || current.data || current.error)) return;
+  const requestId = Number(current.requestId || 0) + 1;
+  state.masterExplorer = { fen: explorer.fen, loading: true, data: null, error: null, requestId };
+  updateOpeningMasterPanel();
+  try {
+    const params = new URLSearchParams({ fen: explorer.fen, moves: "12" });
+    const result = await api(`/api/openings/masters?${params}`);
+    if (state.masterExplorer.requestId !== requestId || state.openingExplorer?.fen !== explorer.fen) return;
+    if (result.status !== "ready") throw new Error(result.error || "Master opening data is unavailable.");
+    state.masterExplorer = { fen: explorer.fen, loading: false, data: result, error: null, requestId };
+    if (result.opening?.name) {
+      explorer.openingName = result.opening.name;
+      const title = document.querySelector('[data-board-position-title="openingExplorer"]');
+      if (title) title.textContent = explorer.openingName;
+    }
+  } catch (error) {
+    if (state.masterExplorer.requestId !== requestId || state.openingExplorer?.fen !== explorer.fen) return;
+    state.masterExplorer = { fen: explorer.fen, loading: false, data: null, error: error.message, requestId };
+  }
+  updateOpeningMasterPanel();
+}
+
+function updateOpeningMasterPanel() {
+  const target = document.querySelector("[data-opening-master-panel]");
+  if (!target || !state.openingExplorer) return;
+  target.outerHTML = renderOpeningContinuationPanel(state.openingExplorer);
+  bindOpeningContinuationInteractions();
+}
+
+function bindOpeningContinuationInteractions() {
+  document.querySelectorAll("[data-opening-continuation]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await playOpeningUci(button.dataset.openingContinuation);
+    });
+  });
+  document.querySelector("[data-master-retry]")?.addEventListener("click", () => requestMasterExplorer(true));
 }
 
 function updateBoardComponent(config) {
@@ -2239,6 +2307,7 @@ function renderOpeningExplorer() {
   });
   updateOpeningExplorer();
   bindOpeningExplorerInteractions();
+  requestMasterExplorer();
 }
 
 function updateOpeningExplorer() {
@@ -2294,11 +2363,7 @@ function bindOpeningExplorerInteractions() {
       await handleOpeningSquare(square);
     }
   });
-  document.querySelectorAll("[data-opening-continuation]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await playOpeningUci(button.dataset.openingContinuation);
-    });
-  });
+  bindOpeningContinuationInteractions();
 }
 
 async function navigateOpeningExplorer(action) {

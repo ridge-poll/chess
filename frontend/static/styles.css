@@ -1986,6 +1986,66 @@ input[type="number"] {
 .continuation-awaiting i:nth-child(2) { background: var(--map-draw); }
 .continuation-awaiting i:nth-child(3) { background: var(--map-black-node); }
 
+.continuation-wdb {
+  display: flex;
+  overflow: hidden;
+  height: 7px;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 2px;
+  background: var(--bg);
+}
+
+.continuation-wdb i {
+  display: block;
+  height: 100%;
+}
+
+.continuation-wdb .white { background: var(--map-white-node); }
+.continuation-wdb .draw { background: var(--map-draw); }
+.continuation-wdb .black { background: var(--map-black-node); }
+
+.continuation-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.continuation-notice button {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.continuation-skeleton {
+  display: grid;
+  grid-template-columns: minmax(52px, 0.75fr) minmax(54px, 0.7fr) minmax(130px, 1.7fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  border-top: 1px solid color-mix(in srgb, var(--line) 58%, transparent);
+}
+
+.continuation-skeleton i {
+  display: block;
+  width: 70%;
+  height: 6px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+  animation: engine-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.continuation-skeleton i:last-child {
+  width: 100%;
+}
+
 @media (max-width: 719px) {
   .board-workspace-view.active {
     padding-inline: 0;
