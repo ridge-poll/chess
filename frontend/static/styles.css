@@ -27,7 +27,7 @@
   --danger-border: #efb5ae;
   --warn-border: #e7c891;
   --quality-best: #81b64c;
-  --quality-great: #1baca6;
+  --quality-great: #81b64c;
   --quality-good: #95b776;
   --quality-inaccuracy: #e6b927;
   --quality-mistake: #e6912c;
@@ -72,7 +72,7 @@
   --danger-border: #815149;
   --warn-border: #7f6742;
   --quality-best: #9bc65d;
-  --quality-great: #35c1ba;
+  --quality-great: #9bc65d;
   --quality-good: #a9c48a;
   --quality-inaccuracy: #f0c94b;
   --quality-mistake: #f0a14a;
