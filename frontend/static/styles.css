@@ -26,12 +26,12 @@
   --eval-line: #5c8d43;
   --danger-border: #efb5ae;
   --warn-border: #e7c891;
-  --quality-best: #137a4d;
-  --quality-great: #3b9360;
-  --quality-good: #76a66c;
-  --quality-inaccuracy: #c99412;
-  --quality-mistake: #d66b26;
-  --quality-blunder: #b42318;
+  --quality-best: #81b64c;
+  --quality-great: #1baca6;
+  --quality-good: #95b776;
+  --quality-inaccuracy: #e6b927;
+  --quality-mistake: #e6912c;
+  --quality-blunder: #c43b35;
   --time-white: #b8b8ad;
   --time-black: #303633;
   --modal-scrim: rgba(23, 32, 38, 0.45);
@@ -71,12 +71,12 @@
   --eval-line: #a3d160;
   --danger-border: #815149;
   --warn-border: #7f6742;
-  --quality-best: #76c893;
-  --quality-great: #82be7b;
-  --quality-good: #91aa7d;
-  --quality-inaccuracy: #e4bd4c;
-  --quality-mistake: #ef9955;
-  --quality-blunder: #ff8072;
+  --quality-best: #9bc65d;
+  --quality-great: #35c1ba;
+  --quality-good: #a9c48a;
+  --quality-inaccuracy: #f0c94b;
+  --quality-mistake: #f0a14a;
+  --quality-blunder: #e45a52;
   --time-white: #e6e5da;
   --time-black: #797b76;
   --modal-scrim: rgba(0, 0, 0, 0.62);
@@ -2368,9 +2368,9 @@ input[type="number"] {
   top: 7%;
   right: 7%;
   z-index: 3;
-  width: clamp(7px, 17%, 11px);
+  width: clamp(9px, 21%, 14px);
   aspect-ratio: 1;
-  border: 1.5px solid rgba(255, 255, 255, 0.86);
+  border: 0.5px solid rgba(255, 255, 255, 0.52);
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.32);
@@ -2944,6 +2944,113 @@ input[type="number"] {
 .time-usage-legend strong {
   margin-left: auto;
   color: var(--ink);
+}
+
+.diagnostic-trajectory {
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostic-trajectory svg {
+  display: block;
+  width: 100%;
+  min-height: 126px;
+  overflow: visible;
+}
+
+.trajectory-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.trajectory-label {
+  fill: var(--muted);
+  font-size: 7px;
+  font-weight: 750;
+}
+
+.trajectory-area {
+  fill: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.trajectory-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.diagnostic-trajectory.volatility .trajectory-area {
+  fill: color-mix(in srgb, var(--quality-mistake) 16%, transparent);
+}
+
+.diagnostic-trajectory.volatility .trajectory-line {
+  stroke: var(--quality-mistake);
+}
+
+.trajectory-hit-target {
+  cursor: pointer;
+  fill: transparent;
+  stroke: transparent;
+}
+
+.trajectory-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.trajectory-footer strong {
+  color: var(--ink);
+}
+
+.phase-performance {
+  display: grid;
+  border-top: 1px solid var(--line);
+}
+
+.phase-performance-row {
+  display: grid;
+  grid-template-columns: minmax(94px, 1fr) minmax(70px, 1.15fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  border-bottom: 1px solid var(--line);
+}
+
+.phase-performance-row > div {
+  display: grid;
+  gap: 2px;
+}
+
+.phase-performance-row span,
+.phase-performance-value span {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.phase-accuracy-track {
+  display: block;
+  overflow: hidden;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.phase-accuracy-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.phase-performance-value {
+  min-width: 62px;
+  text-align: right;
 }
 
 .move-table-heading {

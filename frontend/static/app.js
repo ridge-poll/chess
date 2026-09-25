@@ -1295,7 +1295,7 @@ async function renderGameDetail(gameId) {
         <span>${analysisComplete ? "Analysis ready" : "Analyzing in the background"}</span>
         <small>${escapeHtml(analysisStatus)}</small>
       </div>
-      <button class="primary diagnostic-investigate" id="analysisGameButton">Investigate in Analysis</button>
+      <button class="primary diagnostic-investigate" id="analysisGameButton">Analyze Game</button>
     </header>
     <section class="diagnostic-section analysis-panel">
       <div class="panel-heading">
@@ -1316,6 +1316,27 @@ async function renderGameDetail(gameId) {
         <span class="diagnostic-caption">Time spent per move</span>
       </div>
       ${renderTimeUsagePlot(detail.time_usage || [], game)}
+    </section>
+    <section class="diagnostic-section analysis-panel">
+      <div class="panel-heading">
+        <h2>Volatility</h2>
+        <span class="diagnostic-caption">Evaluation movement</span>
+      </div>
+      ${renderVolatilityPlot(detail.volatility || {}, game)}
+    </section>
+    <section class="diagnostic-section analysis-panel">
+      <div class="panel-heading">
+        <h2>Position Structure</h2>
+        <span class="diagnostic-caption">Closed to open</span>
+      </div>
+      ${renderOpennessPlot(detail.openness || [], game)}
+    </section>
+    <section class="diagnostic-section analysis-panel">
+      <div class="panel-heading">
+        <h2>Performance by Phase</h2>
+        <span class="diagnostic-caption">Your moves</span>
+      </div>
+      ${renderPhasePerformance(detail.phase_performance || {}, game)}
     </section>
     <div class="move-table-heading">
       <span>${escapeHtml(game.white || "White")}</span>
@@ -1474,13 +1495,13 @@ function renderBoardExplorer(moves, startingFen) {
 }
 
 function bindAnalysisDetailInteractions() {
-  document.querySelectorAll("[data-eval-ply], [data-select-ply], [data-move-ply], [data-explorer-ply], [data-time-ply]").forEach((node) => {
+  document.querySelectorAll("[data-eval-ply], [data-select-ply], [data-move-ply], [data-explorer-ply], [data-time-ply], [data-diagnostic-ply]").forEach((node) => {
     node.addEventListener("click", async () => {
-      const ply = Number(node.dataset.evalPly || node.dataset.selectPly || node.dataset.movePly || node.dataset.explorerPly || node.dataset.timePly);
+      const ply = Number(node.dataset.evalPly || node.dataset.selectPly || node.dataset.movePly || node.dataset.explorerPly || node.dataset.timePly || node.dataset.diagnosticPly);
       if (!Number.isNaN(ply)) {
         state.selectedPly = ply;
         updateSelectedPly();
-        if (node.matches("[data-move-ply], [data-time-ply]")) await openGameAnalysisBoardFromPly(ply);
+        if (node.matches("[data-move-ply], [data-time-ply], [data-diagnostic-ply]")) await openGameAnalysisBoardFromPly(ply);
       }
     });
   });
@@ -1500,8 +1521,8 @@ function bindAnalysisDetailInteractions() {
 
 function updateSelectedPly() {
   const selected = state.selectedPositions.find((position) => Number(position.ply) === Number(state.selectedPly));
-  document.querySelectorAll("[data-eval-ply], [data-move-ply], [data-select-ply], [data-explorer-ply], [data-time-ply]").forEach((node) => {
-    const ply = Number(node.dataset.evalPly || node.dataset.movePly || node.dataset.selectPly || node.dataset.explorerPly || node.dataset.timePly);
+  document.querySelectorAll("[data-eval-ply], [data-move-ply], [data-select-ply], [data-explorer-ply], [data-time-ply], [data-diagnostic-ply]").forEach((node) => {
+    const ply = Number(node.dataset.evalPly || node.dataset.movePly || node.dataset.selectPly || node.dataset.explorerPly || node.dataset.timePly || node.dataset.diagnosticPly);
     node.classList.toggle("selected", ply === Number(state.selectedPly));
   });
   updateEvaluationCursor();
@@ -2045,7 +2066,15 @@ async function openBlankAnalysisBoard() {
 async function openGameAnalysisBoard(gameId) {
   state.analysisReturnView = "detail";
   const workspace = await api(`/api/board/games/${gameId}${profileParam()}`);
-  applyAnalysisWorkspace(workspace, workspace.game || null);
+  const startingWorkspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({
+      moves: workspace.moves || [],
+      starting_fen: workspace.starting_fen || STARTING_FEN,
+      selected_ply: 0,
+    }),
+  });
+  applyAnalysisWorkspace(startingWorkspace, workspace.game || null, workspace.positions || []);
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.textContent = "‹ Game";
@@ -2693,6 +2722,103 @@ function renderTimeUsagePlot(timeUsage, game) {
         <span><i class="user"></i>Your moves</span>
         <strong>Peak ${formatThinkTime(maxSeconds)}</strong>
       </div>
+    </div>
+  `;
+}
+
+function renderVolatilityPlot(volatility, game) {
+  const points = (volatility.points || []).filter((point) => point.volatility_cp != null);
+  if (!points.length) {
+    return `<div class="diagnostic-empty">Evaluation data is needed to measure volatility.</div>`;
+  }
+  const values = points.map((point) => Math.min(1000, Number(point.volatility_cp) || 0));
+  return renderDiagnosticTrajectory({
+    points,
+    values,
+    className: "volatility",
+    ariaLabel: "Evaluation volatility over the game",
+    topLabel: "High",
+    bottomLabel: "Stable",
+    titleFor: (point) => `${moveLabel(point)} · ${formatSignedCp(point.volatility_cp)} movement`,
+    footer: `<span>Average movement</span><strong>${formatSignedCp(volatility.average_cp)}</strong>`,
+  });
+}
+
+function renderOpennessPlot(openness, game) {
+  const points = openness || [];
+  if (!points.length) {
+    return `<div class="diagnostic-empty">Position structure is not available.</div>`;
+  }
+  return renderDiagnosticTrajectory({
+    points,
+    values: points.map((point) => Number(point.score) || 0),
+    className: "openness",
+    ariaLabel: "Position openness over the game",
+    topLabel: "Open",
+    bottomLabel: "Closed",
+    fixedMaximum: 100,
+    titleFor: (point) => `${moveLabel(point)} · openness ${Number(point.score).toFixed(0)} · ${point.open_files} open files`,
+    footer: `<span>${points[points.length - 1].open_files} open · ${points[points.length - 1].semi_open_files} semi-open files</span><strong>${Number(points[points.length - 1].score).toFixed(0)} / 100</strong>`,
+  });
+}
+
+function renderDiagnosticTrajectory(config) {
+  const width = 320;
+  const height = 132;
+  const left = 30;
+  const right = 8;
+  const top = 10;
+  const bottom = 114;
+  const maximum = Math.max(1, Number(config.fixedMaximum) || 0, ...config.values);
+  const xFor = (index) => config.points.length === 1
+    ? width / 2
+    : left + index / (config.points.length - 1) * (width - left - right);
+  const yFor = (value) => bottom - Math.max(0, Math.min(maximum, value)) / maximum * (bottom - top);
+  const path = config.values.map((value, index) => `${index ? "L" : "M"} ${xFor(index).toFixed(1)} ${yFor(value).toFixed(1)}`).join(" ");
+  const area = `${path} L ${xFor(config.values.length - 1).toFixed(1)} ${bottom} L ${xFor(0).toFixed(1)} ${bottom} Z`;
+  return `
+    <div class="diagnostic-trajectory ${escapeHtml(config.className)}">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(config.ariaLabel)}">
+        <text class="trajectory-label" x="0" y="16">${escapeHtml(config.topLabel)}</text>
+        <text class="trajectory-label" x="0" y="${bottom}">${escapeHtml(config.bottomLabel)}</text>
+        <line class="trajectory-axis" x1="${left}" y1="${bottom}" x2="${width - right}" y2="${bottom}"></line>
+        <path class="trajectory-area" d="${area}"></path>
+        <path class="trajectory-line" d="${path}"></path>
+        ${config.points.map((point, index) => `
+          <circle class="trajectory-hit-target" data-diagnostic-ply="${point.ply}" cx="${xFor(index).toFixed(1)}" cy="${yFor(config.values[index]).toFixed(1)}" r="8">
+            <title>${escapeHtml(config.titleFor(point))}</title>
+          </circle>
+        `).join("")}
+      </svg>
+      <div class="trajectory-footer">${config.footer}</div>
+    </div>
+  `;
+}
+
+function renderPhasePerformance(performance, game) {
+  const userColor = userColorForGame(game);
+  const phases = performance[userColor] || [];
+  if (!phases.some((phase) => phase.moves)) {
+    return `<div class="diagnostic-empty">No phase data is available.</div>`;
+  }
+  return `
+    <div class="phase-performance">
+      ${phases.map((phase) => {
+        const accuracy = phase.accuracy == null ? null : Number(phase.accuracy);
+        return `
+          <div class="phase-performance-row">
+            <div>
+              <strong>${capitalize(phase.phase)}</strong>
+              <span>${phase.moves} moves · ${phase.mistakes} errors</span>
+            </div>
+            <span class="phase-accuracy-track"><i style="width:${accuracy ?? 0}%"></i></span>
+            <div class="phase-performance-value">
+              <strong>${accuracy == null ? "—" : `${accuracy.toFixed(1)}%`}</strong>
+              <span>${phase.acpl == null ? "Pending" : `${phase.acpl} ACPL`}</span>
+            </div>
+          </div>
+        `;
+      }).join("")}
     </div>
   `;
 }

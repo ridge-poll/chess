@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import chess
 
-from app.analysis.metrics import MOVE_CLASSIFICATIONS, score_to_cp
+from app.analysis.metrics import MOVE_CLASSIFICATIONS, accuracy_from_acpl, score_to_cp
+from app.analysis.position_features import openness_features
 from app.db import get_connection
 from app.services.profiles import resolve_profile_id
 
@@ -79,6 +80,8 @@ def get_game_positions(
 
     positions = [_serialize_position(row) for row in rows]
     time_usage = _time_usage(positions, game["time_control"])
+    volatility = _volatility(positions)
+    openness = _openness_trajectory(positions)
     return {
         "profile_id": selected_profile_id,
         "game": game,
@@ -89,6 +92,9 @@ def get_game_positions(
         "evaluation_summary": _evaluation_summary(positions),
         "quality_counts": _quality_counts(positions),
         "time_usage": time_usage,
+        "volatility": volatility,
+        "openness": openness,
+        "phase_performance": _phase_performance(positions),
     }
 
 
@@ -247,3 +253,82 @@ def _parse_time_control(time_control: object) -> tuple[float | None, float]:
     except ValueError:
         return None, 0.0
     return base, increment
+
+
+def _volatility(positions: list[dict[str, object]]) -> dict[str, object]:
+    points: list[dict[str, object]] = []
+    previous: int | None = None
+    contributions: list[int] = []
+    for position in positions:
+        current_value = position["eval_after_display_cp"]
+        contribution: int | None = None
+        if current_value is not None:
+            current = max(-1000, min(1000, int(current_value)))
+            if previous is None and position["eval_before_display_cp"] is not None:
+                previous = max(-1000, min(1000, int(position["eval_before_display_cp"])))
+            if previous is not None:
+                contribution = abs(current - previous)
+                contributions.append(contribution)
+            previous = current
+        position["volatility_cp"] = contribution
+        points.append(
+            {
+                "ply": position["ply"],
+                "move_number": position["move_number"],
+                "side": position["side"],
+                "san": position["san"],
+                "volatility_cp": contribution,
+            }
+        )
+    return {
+        "average_cp": round(sum(contributions) / len(contributions), 1) if contributions else None,
+        "points": points,
+    }
+
+
+def _openness_trajectory(positions: list[dict[str, object]]) -> list[dict[str, object]]:
+    trajectory: list[dict[str, object]] = []
+    for position in positions:
+        features = openness_features(str(position["fen"]))
+        position["openness"] = features
+        trajectory.append(
+            {
+                "ply": position["ply"],
+                "move_number": position["move_number"],
+                "side": position["side"],
+                "san": position["san"],
+                **features,
+            }
+        )
+    return trajectory
+
+
+def _phase_performance(positions: list[dict[str, object]]) -> dict[str, list[dict[str, object]]]:
+    result: dict[str, list[dict[str, object]]] = {"white": [], "black": []}
+    for side in result:
+        for phase in ("opening", "middlegame", "endgame"):
+            phase_positions = [
+                position
+                for position in positions
+                if position["side"] == side and position["phase"] == phase
+            ]
+            losses = [
+                int(position["centipawn_loss"])
+                for position in phase_positions
+                if position["centipawn_loss"] is not None
+            ]
+            acpl = round(sum(losses) / len(losses), 1) if losses else None
+            result[side].append(
+                {
+                    "phase": phase,
+                    "moves": len(phase_positions),
+                    "analyzed_moves": len(losses),
+                    "acpl": acpl,
+                    "accuracy": accuracy_from_acpl(acpl),
+                    "mistakes": sum(
+                        position["classification"] in {"inaccuracy", "mistake", "blunder"}
+                        for position in phase_positions
+                    ),
+                }
+            )
+    return result

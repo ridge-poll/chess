@@ -70,6 +70,12 @@ def test_positions_preserve_move_and_evaluation_order(tmp_path: Path, monkeypatc
     assert result["quality_counts"]["black"]["blunder"] == 1
     assert [point["time_spent_seconds"] for point in result["time_usage"]] == [4.0, 5.0, 6.0, None]
     assert result["positions"][2]["time_spent_seconds"] == 6.0
+    assert [point["volatility_cp"] for point in result["volatility"]["points"]] == [10, 50, 5, 345]
+    assert result["volatility"]["average_cp"] == 102.5
+    assert result["openness"][0]["total_pawns"] == 16
+    assert result["positions"][0]["openness"]["score"] == result["openness"][0]["score"]
+    assert result["phase_performance"]["white"][0]["acpl"] == 2.5
+    assert result["phase_performance"]["black"][0]["mistakes"] == 1
 
 
 def test_positions_handle_missing_analysis_and_clock_data(tmp_path: Path, monkeypatch) -> None:
