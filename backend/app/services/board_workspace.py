@@ -98,16 +98,38 @@ def load_game_workspace(game_id: int, profile_id: int | None = None) -> dict[str
             "side": position["side"],
             "san": position["san"],
             "uci": position["uci"],
+            "classification": position["classification"],
+            "centipawn_loss": position["centipawn_loss"],
+            "eval_after_cp": position["eval_after_display_cp"],
+            "mate_after": position["mate_after"],
         }
         for position in positions
     ]
-    snapshots = [
-        _snapshot_from_fen(str(detail["starting_fen"]), 0, None, None),
-        *[
-            _snapshot_from_fen(str(position["fen"]), int(position["ply"]), str(position["san"]), str(position["uci"]))
-            for position in positions
-        ],
-    ]
+    initial_snapshot = _snapshot_from_fen(str(detail["starting_fen"]), 0, None, None)
+    if positions:
+        initial_snapshot.update(
+            {
+                "eval_after_cp": positions[0]["eval_before_display_cp"],
+                "mate_after": positions[0]["mate_before"],
+            }
+        )
+    snapshots = [initial_snapshot]
+    for position in positions:
+        snapshot = _snapshot_from_fen(
+            str(position["fen"]),
+            int(position["ply"]),
+            str(position["san"]),
+            str(position["uci"]),
+        )
+        snapshot.update(
+            {
+                "classification": position["classification"],
+                "centipawn_loss": position["centipawn_loss"],
+                "eval_after_cp": position["eval_after_display_cp"],
+                "mate_after": position["mate_after"],
+            }
+        )
+        snapshots.append(snapshot)
     final_board = chess.Board(str(snapshots[-1]["fen"])) if snapshots else chess.Board(STARTING_FEN)
     return {
         "game": detail["game"],

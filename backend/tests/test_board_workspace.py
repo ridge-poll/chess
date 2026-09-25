@@ -113,3 +113,26 @@ def test_game_workspace_is_profile_scoped(tmp_path: Path, monkeypatch) -> None:
 
     assert load_game_workspace(game_id, int(profile_b["id"])) is None
     assert load_game_workspace(game_id) is not None
+
+
+def test_game_workspace_preserves_saved_move_analysis(tmp_path: Path, monkeypatch) -> None:
+    database_path = _setup_db(tmp_path, monkeypatch)
+    game_id = import_pgn_text(SAMPLE_PGN)["imported_game_ids"][0]
+    with db.get_connection(database_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO move_analyses (
+                game_id, ply, depth, played_uci, best_uci,
+                eval_before_cp, eval_after_cp, centipawn_loss, classification
+            ) VALUES (?, 1, 10, 'e2e4', 'e2e4', 12, 28, 0, 'best')
+            """,
+            (game_id,),
+        )
+
+    workspace = load_game_workspace(game_id)
+
+    assert workspace is not None
+    assert workspace["positions"][0]["eval_after_cp"] == 12
+    assert workspace["positions"][1]["eval_after_cp"] == 28
+    assert workspace["positions"][1]["classification"] == "best"
+    assert workspace["move_history"][0]["centipawn_loss"] == 0

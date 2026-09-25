@@ -1645,7 +1645,8 @@ function renderBoardFirstComponent(config) {
         `).join("")}
       </div>
       <div class="board-first-layout">
-        <div class="chessboard-wrap" data-board-orientation="${escapeHtml(orientation)}">
+        <div class="chessboard-wrap ${config.showEvaluationBar ? "with-evaluation-bar" : ""}" data-board-orientation="${escapeHtml(orientation)}">
+          ${config.showEvaluationBar ? renderEvaluationBar(config.evaluation) : ""}
           <div class="board-rank-labels" data-board-ranks="${escapeHtml(config.id)}" aria-hidden="true">${renderRankLabels(orientation)}</div>
           <div class="chessboard" id="chessboard-${escapeHtml(config.id)}" data-board-surface="${escapeHtml(config.id)}" aria-label="Chess board"></div>
           <div class="board-file-labels" data-board-files="${escapeHtml(config.id)}" aria-hidden="true">${renderFileLabels(orientation)}</div>
@@ -1784,6 +1785,47 @@ function updateBoardComponent(config) {
       target?.classList.add("legal-capture");
     }
   });
+  if (config.lastMoveQuality?.square && config.lastMoveQuality?.classification) {
+    const destination = board.querySelector(`[data-board-square="${config.lastMoveQuality.square}"]`);
+    if (destination) {
+      destination.insertAdjacentHTML("beforeend", renderBoardQualityDot(config.lastMoveQuality.classification));
+    }
+  }
+}
+
+function renderBoardQualityDot(classification) {
+  const normalized = normalizedClassification(classification);
+  if (!normalized) return "";
+  const label = classificationLabel(normalized);
+  return `<span class="board-quality-dot ${classificationClass(normalized)}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"></span>`;
+}
+
+function renderEvaluationBar(evaluation = {}) {
+  const display = evaluationDisplay(evaluation.cp, evaluation.mate, evaluation.mateWinner);
+  return `
+    <div class="evaluation-bar" data-analysis-evaluation-bar role="img" aria-label="${escapeHtml(display.label)}" title="${escapeHtml(display.label)}">
+      <span class="evaluation-bar-white" data-evaluation-white style="height:${display.whitePercent}%"></span>
+      <span class="evaluation-bar-divider" data-evaluation-divider style="bottom:${display.whitePercent}%"></span>
+    </div>
+  `;
+}
+
+function evaluationDisplay(cp, mate, mateWinner = null) {
+  if (mate != null) {
+    const whiteWins = Number(mate) > 0 || (Number(mate) === 0 && mateWinner === "white");
+    const blackWins = Number(mate) < 0 || (Number(mate) === 0 && mateWinner === "black");
+    const whitePercent = whiteWins ? 100 : blackWins ? 0 : 50;
+    const label = Number(mate) === 0 && mateWinner
+      ? `${capitalize(mateWinner)} delivered checkmate`
+      : Number(mate) === 0
+        ? "Checkmate"
+        : `${Number(mate) > 0 ? "White" : "Black"} mate in ${Math.abs(Number(mate))}`;
+    return { whitePercent, label };
+  }
+  if (cp == null) return { whitePercent: 50, label: "Evaluation unavailable" };
+  const value = Number(cp);
+  const whitePercent = Math.max(4, Math.min(96, 50 + 50 * Math.tanh(value / 400)));
+  return { whitePercent, label: `Evaluation ${formatEngineEval(value, null)}, White perspective` };
 }
 
 async function requestPositionEngine(boardId, fen, game = {}, allowPlay = false) {
@@ -1817,6 +1859,7 @@ function updateEnginePanel(boardId, game = {}, allowPlay = false) {
   if (!target) return;
   target.innerHTML = renderEnginePanel(boardId, state.enginePanels[boardId], game, allowPlay);
   bindEngineCandidateInteractions(boardId, allowPlay);
+  if (boardId === "analysisBoard") updateAnalysisEvaluationBar();
 }
 
 function renderEnginePanel(boardId, panel, game = {}, allowPlay = false) {
@@ -2007,26 +2050,28 @@ async function openGameAnalysisBoardFromPly(ply) {
   state.analysisReturnView = "detail";
   const workspace = await api(`/api/board/games/${state.selectedGameId}${profileParam()}`);
   workspace.selected_ply = Math.max(0, Math.min(Number(ply) || 0, (workspace.moves || []).length));
-  const selectedMoves = (workspace.moves || []).slice(0, workspace.selected_ply);
   const selectedWorkspace = await api("/api/board/position", {
     method: "POST",
     body: JSON.stringify({
-      moves: selectedMoves,
+      moves: workspace.moves || [],
       starting_fen: workspace.starting_fen || STARTING_FEN,
-      selected_ply: selectedMoves.length,
+      selected_ply: workspace.selected_ply,
     }),
   });
-  applyAnalysisWorkspace({ ...selectedWorkspace, game: workspace.game }, workspace.game || null);
+  applyAnalysisWorkspace({ ...selectedWorkspace, game: workspace.game }, workspace.game || null, workspace.positions || []);
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.textContent = "‹ Game";
   setView("analysis");
 }
 
-function applyAnalysisWorkspace(workspace, sourceGame = undefined) {
+function applyAnalysisWorkspace(workspace, sourceGame = undefined, savedPositions = undefined) {
   state.analysisBoard = {
     ...workspace,
     sourceGame: sourceGame === undefined ? state.analysisBoard?.sourceGame || null : sourceGame,
+    savedPositions: savedPositions === undefined
+      ? (sourceGame === undefined ? state.analysisBoard?.savedPositions || [] : workspace.positions || [])
+      : savedPositions,
     openingName: state.analysisBoard?.openingName || "Starting position",
     selectedSquare: null,
   };
@@ -2062,6 +2107,7 @@ function renderAnalysisBoard() {
     turn: "white",
   };
   const source = boardState.sourceGame;
+  const evaluation = currentAnalysisEvaluation(boardState);
   els.analysisBoardMount.innerHTML = renderBoardComponent({
     id: "analysisBoard",
     mode: "analysis",
@@ -2077,6 +2123,8 @@ function renderAnalysisBoard() {
     enginePanel: state.enginePanels.analysisBoard,
     allowInteraction: true,
     boardFirst: true,
+    showEvaluationBar: true,
+    evaluation,
     positionTitle: boardState.openingName || "Opening not identified",
     statusLabel: positionStatusText(boardState),
     timelineAttribute: "data-analysis-ply",
@@ -2105,6 +2153,7 @@ function updateAnalysisBoard() {
   const boardState = state.analysisBoard;
   if (!boardState) return;
   const selected = (boardState.positions || []).find((position) => Number(position.ply) === Number(boardState.selected_ply));
+  const savedMove = savedAnalysisForCurrentMove(boardState);
   updateBoardComponent({
     id: "analysisBoard",
     fen: boardState.fen,
@@ -2115,7 +2164,12 @@ function updateAnalysisBoard() {
     allowInteraction: true,
     selectedSquare: boardState.selectedSquare,
     legalMoves: boardState.legal_moves || [],
+    lastMoveQuality: savedMove?.classification ? {
+      square: destinationSquare(savedMove.uci),
+      classification: savedMove.classification,
+    } : null,
   });
+  updateAnalysisEvaluationBar();
   document.querySelectorAll("[data-analysis-ply]").forEach((node) => {
     node.classList.toggle("selected", Number(node.dataset.analysisPly) === Number(boardState.selected_ply));
   });
@@ -2129,6 +2183,56 @@ function updateAnalysisBoard() {
   const title = document.querySelector('[data-board-position-title="analysisBoard"]');
   if (title) title.textContent = boardState.openingName || "Opening not identified";
   requestPositionEngine("analysisBoard", boardState.fen, {}, true);
+}
+
+function savedAnalysisForCurrentMove(boardState) {
+  const ply = Number(boardState?.selected_ply) || 0;
+  if (!ply) return null;
+  const currentMove = (boardState.move_history || []).find((move) => Number(move.ply) === ply);
+  const saved = (boardState.savedPositions || []).find((position) => Number(position.ply) === ply);
+  return currentMove && saved && currentMove.uci === saved.uci ? saved : null;
+}
+
+function currentAnalysisEvaluation(boardState) {
+  const ply = Number(boardState?.selected_ply) || 0;
+  const saved = ply === 0
+    ? (boardState?.savedPositions || []).find((position) => Number(position.ply) === 0)
+    : savedAnalysisForCurrentMove(boardState);
+  if (saved && (saved.eval_after_cp != null || saved.mate_after != null)) {
+    return {
+      cp: saved.eval_after_cp,
+      mate: saved.mate_after,
+      mateWinner: Number(saved.mate_after) === 0 && boardState.is_checkmate
+        ? (boardState.turn === "white" ? "black" : "white")
+        : null,
+    };
+  }
+  const live = state.enginePanels.analysisBoard?.engine;
+  return {
+    cp: live?.score_cp ?? null,
+    mate: live?.mate ?? null,
+    mateWinner: live?.mate === 0 && boardState.is_checkmate
+      ? (boardState.turn === "white" ? "black" : "white")
+      : null,
+  };
+}
+
+function updateAnalysisEvaluationBar() {
+  const bar = document.querySelector("[data-analysis-evaluation-bar]");
+  if (!bar || !state.analysisBoard) return;
+  const evaluation = currentAnalysisEvaluation(state.analysisBoard);
+  const display = evaluationDisplay(evaluation.cp, evaluation.mate, evaluation.mateWinner);
+  const white = bar.querySelector("[data-evaluation-white]");
+  const divider = bar.querySelector("[data-evaluation-divider]");
+  if (white) white.style.height = `${display.whitePercent}%`;
+  if (divider) divider.style.bottom = `${display.whitePercent}%`;
+  bar.setAttribute("aria-label", display.label);
+  bar.title = display.label;
+}
+
+function destinationSquare(uci) {
+  const text = String(uci || "");
+  return text.length >= 4 ? text.slice(2, 4) : null;
 }
 
 function bindAnalysisBoardInteractions() {
