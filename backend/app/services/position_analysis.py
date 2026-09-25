@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import chess
 
-from app.analysis.metrics import score_to_cp
+from app.analysis.metrics import MOVE_CLASSIFICATIONS, score_to_cp
 from app.db import get_connection
 from app.services.profiles import resolve_profile_id
 
 
-QUALITY_BUCKETS = ["good", "imprecision", "inaccuracy", "mistake", "blunder", "unknown"]
+QUALITY_BUCKETS = list(MOVE_CLASSIFICATIONS)
 
 
 def get_game_positions(
@@ -115,7 +115,7 @@ def _serialize_position(row: dict[str, object]) -> dict[str, object]:
         "mate_before": row["mate_before"],
         "mate_after": row["mate_after"],
         "centipawn_loss": row["centipawn_loss"],
-        "classification": row["classification"] or "unknown",
+        "classification": row["classification"],
     }
 
 
@@ -192,8 +192,8 @@ def _quality_counts(positions: list[dict[str, object]]) -> dict[str, dict[str, i
         side = str(position["side"])
         if side not in counts:
             continue
-        classification = str(position["classification"] or "unknown")
+        classification = position["classification"]
         if classification not in counts[side]:
-            classification = "unknown"
+            continue
         counts[side][classification] += 1
     return counts

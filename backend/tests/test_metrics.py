@@ -3,6 +3,7 @@ from app.analysis.metrics import (
     accuracy_from_acpl,
     centipawn_loss,
     classify_loss,
+    classify_move,
     move_loss,
 )
 
@@ -14,10 +15,14 @@ def test_centipawn_loss_is_from_side_to_move_perspective() -> None:
 
 
 def test_classification_thresholds() -> None:
-    assert classify_loss(10) == "good"
+    assert classify_loss(10) == "great"
+    assert classify_loss(30) == "good"
     assert classify_loss(80) == "inaccuracy"
     assert classify_loss(150) == "mistake"
     assert classify_loss(300) == "blunder"
+    assert classify_move(0, "e2e4", "e2e4") == "best"
+    assert classify_move(8, "e2e4", "d2d4") == "great"
+    assert classify_move(None, "e2e4", "e2e4") is None
 
 
 def test_accuracy_from_acpl() -> None:

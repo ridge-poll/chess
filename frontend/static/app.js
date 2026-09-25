@@ -1369,7 +1369,7 @@ function renderMoveCell(move, color) {
   if (!move) {
     return `<div class="move-cell ${color} empty"></div>`;
   }
-  const classification = move.classification || "pending";
+  const classification = normalizedClassification(move.classification);
   const loss = move.centipawn_loss == null ? "-" : move.centipawn_loss;
   return `
     <button class="move-cell ${color}" data-move-ply="${move.ply}" aria-label="Open analysis at ${escapeHtml(moveLabel(move))}">
@@ -1377,7 +1377,7 @@ function renderMoveCell(move, color) {
         <div class="move-san">${color === "white" ? `${move.move_number}.` : `${move.move_number}...`} ${escapeHtml(move.san)}</div>
         <div class="move-meta">${move.clock_seconds == null ? "No clock" : formatClock(move.clock_seconds)} · Eval ${formatEval(move.eval_after_cp, move.mate_after)}</div>
       </div>
-      <span class="move-loss ${classificationClass(classification)}"><span aria-hidden="true"></span>${loss}</span>
+      ${classification ? `<span class="move-loss ${classificationClass(classification)}" title="${classificationLabel(classification)}"><span aria-hidden="true"></span>${loss}<span class="sr-only"> ${classificationLabel(classification)}</span></span>` : ""}
     </button>
   `;
 }
@@ -1517,7 +1517,7 @@ function updateSelectedPly() {
       <div class="stat-title">${escapeHtml(moveLabel(selected))}</div>
       <div class="stat-subtitle">Best ${escapeHtml(selected.best_uci || "-")} · CPL ${selected.centipawn_loss == null ? "-" : selected.centipawn_loss}</div>
     </div>
-    <span class="pill ${classificationClass(selected.classification)}">${escapeHtml(selected.classification || "unknown")}</span>
+    ${normalizedClassification(selected.classification) ? `<span class="pill ${classificationClass(selected.classification)}">${classificationLabel(selected.classification)}</span>` : ""}
     <strong>${playerAdvantageLabel(selected.eval_after_cp ?? selected.eval_after_display_cp, selected.mate_after, state.selectedGame || {})}</strong>
   `;
 }
@@ -2506,21 +2506,25 @@ function defaultSelectedPly(moves) {
 }
 
 function renderQualityCounts(counts, game) {
-  const buckets = ["good", "imprecision", "inaccuracy", "mistake", "blunder", "unknown"];
+  const buckets = ["best", "great", "good", "inaccuracy", "mistake", "blunder"];
   const whiteCounts = counts.white || {};
   const blackCounts = counts.black || {};
+  const bucketCount = (sideCounts, bucket) => {
+    if (bucket === "good") return Number(sideCounts.good || 0) + Number(sideCounts.imprecision || 0);
+    return Number(sideCounts[bucket] || 0);
+  };
   return `
     <div class="quality-grid">
       <div class="quality-player">${escapeHtml(game.white || "White")}</div>
       <div class="quality-player">${escapeHtml(game.black || "Black")}</div>
       ${buckets.map((bucket) => `
         <div class="quality-row">
-          <span>${escapeHtml(capitalize(bucket))}</span>
-          <strong>${whiteCounts[bucket] || 0}</strong>
+          <span class="quality-label ${classificationClass(bucket)}"><i aria-hidden="true"></i>${classificationLabel(bucket)}</span>
+          <strong>${bucketCount(whiteCounts, bucket)}</strong>
         </div>
         <div class="quality-row">
-          <span>${escapeHtml(capitalize(bucket))}</span>
-          <strong>${blackCounts[bucket] || 0}</strong>
+          <span class="quality-label ${classificationClass(bucket)}"><i aria-hidden="true"></i>${classificationLabel(bucket)}</span>
+          <strong>${bucketCount(blackCounts, bucket)}</strong>
         </div>
       `).join("")}
     </div>
@@ -2663,10 +2667,20 @@ function statusPill(game) {
 }
 
 function classificationClass(classification) {
-  if (classification === "blunder") return "bad";
-  if (classification === "mistake" || classification === "inaccuracy" || classification === "imprecision") return "warn";
-  if (classification === "good") return "good";
-  return "";
+  const normalized = normalizedClassification(classification);
+  return normalized ? `quality-${normalized}` : "";
+}
+
+function normalizedClassification(classification) {
+  if (classification === "imprecision") return "good";
+  return ["best", "great", "good", "inaccuracy", "mistake", "blunder"].includes(classification)
+    ? classification
+    : null;
+}
+
+function classificationLabel(classification) {
+  const normalized = normalizedClassification(classification);
+  return normalized ? capitalize(normalized) : "";
 }
 
 function moveLabel(point) {

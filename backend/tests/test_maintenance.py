@@ -51,4 +51,4 @@ def test_repair_analysis_metrics_normalizes_existing_giant_losses(
 
     assert repaired == 1
     assert row["centipawn_loss"] == 0
-    assert row["classification"] == "good"
+    assert row["classification"] == "great"

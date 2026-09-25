@@ -3,6 +3,11 @@ from __future__ import annotations
 
 MAX_STATISTICAL_CPL = 1_000
 MATE_SCORE = 10_000
+MOVE_CLASSIFICATIONS = ("best", "great", "good", "inaccuracy", "mistake", "blunder")
+GREAT_MAX_CPL = 29
+GOOD_MAX_CPL = 74
+INACCURACY_MAX_CPL = 149
+MISTAKE_MAX_CPL = 299
 
 
 def score_to_cp(score_cp: int | None, mate: int | None) -> int | None:
@@ -51,16 +56,24 @@ def move_loss(
 
 def classify_loss(loss: int | None) -> str:
     if loss is None:
-        return "unknown"
-    if loss >= 300:
+        raise ValueError("A move without an evaluation loss cannot be classified.")
+    if loss > MISTAKE_MAX_CPL:
         return "blunder"
-    if loss >= 150:
+    if loss > INACCURACY_MAX_CPL:
         return "mistake"
-    if loss >= 75:
+    if loss > GOOD_MAX_CPL:
         return "inaccuracy"
-    if loss >= 30:
-        return "imprecision"
-    return "good"
+    if loss > GREAT_MAX_CPL:
+        return "good"
+    return "great"
+
+
+def classify_move(loss: int | None, played_uci: str | None, best_uci: str | None) -> str | None:
+    if loss is None:
+        return None
+    if played_uci and best_uci and played_uci == best_uci:
+        return "best"
+    return classify_loss(loss)
 
 
 def accuracy_from_acpl(acpl: float | None) -> float | None:

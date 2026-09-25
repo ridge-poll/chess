@@ -31,9 +31,9 @@ def _setup_db(tmp_path: Path, monkeypatch) -> Path:
 
 def _insert_analysis(database_path: Path, game_id: int) -> None:
     rows = [
-        (1, "e2e4", "e2e4", 20, 30, None, None, 0, "good"),
-        (2, "e7e5", "c7c5", 30, 80, None, None, 50, "imprecision"),
-        (3, "g1f3", "g1f3", 80, 75, None, None, 5, "good"),
+        (1, "e2e4", "e2e4", 20, 30, None, None, 0, "best"),
+        (2, "e7e5", "c7c5", 30, 80, None, None, 50, "good"),
+        (3, "g1f3", "g1f3", 80, 75, None, None, 5, "best"),
         (4, "b8c6", "g8f6", 75, 420, None, None, 345, "blunder"),
     ]
     with db.get_connection(database_path) as conn:
@@ -65,8 +65,8 @@ def test_positions_preserve_move_and_evaluation_order(tmp_path: Path, monkeypatc
     assert result["evaluation_summary"]["last_eval_cp"] == 420
     assert result["evaluation_summary"]["largest_swings"][0]["delta_cp"] == 345
     assert result["evaluation_summary"]["largest_swings"][0]["ply"] == 4
-    assert result["quality_counts"]["white"]["good"] == 2
-    assert result["quality_counts"]["black"]["imprecision"] == 1
+    assert result["quality_counts"]["white"]["best"] == 2
+    assert result["quality_counts"]["black"]["good"] == 1
     assert result["quality_counts"]["black"]["blunder"] == 1
 
 
@@ -81,9 +81,9 @@ def test_positions_handle_missing_analysis_and_clock_data(tmp_path: Path, monkey
     assert result["positions"][0]["clock_seconds"] == 598
     assert result["positions"][3]["clock_seconds"] is None
     assert result["positions"][0]["eval_after_cp"] is None
-    assert result["positions"][0]["classification"] == "unknown"
-    assert result["quality_counts"]["white"]["unknown"] == 2
-    assert result["quality_counts"]["black"]["unknown"] == 2
+    assert result["positions"][0]["classification"] is None
+    assert sum(result["quality_counts"]["white"].values()) == 0
+    assert sum(result["quality_counts"]["black"].values()) == 0
 
 
 def test_positions_reconstruct_fen_after_each_ply(tmp_path: Path, monkeypatch) -> None:
@@ -112,4 +112,4 @@ def test_position_analysis_is_profile_scoped(tmp_path: Path, monkeypatch) -> Non
     profile_b_result = get_game_positions(profile_b_game, int(profile_b["id"]))
 
     assert profile_b_result is not None
-    assert profile_b_result["quality_counts"]["white"]["unknown"] == 2
+    assert sum(profile_b_result["quality_counts"]["white"].values()) == 0

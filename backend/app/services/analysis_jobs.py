@@ -4,7 +4,7 @@ import logging
 
 import chess
 
-from app.analysis.metrics import classify_loss, move_loss
+from app.analysis.metrics import classify_move, move_loss
 from app.analysis.stockfish import StockfishClient
 from app.db import get_connection
 from app.models import EngineEvaluation
@@ -57,7 +57,7 @@ def analyze_game(game_id: int, depth: int) -> dict[str, object]:
                     str(move["color"]),
                     chess.Board(str(move["fen_after"])).is_checkmate(),
                 )
-                classification = classify_loss(loss)
+                classification = classify_move(loss, str(move["uci"]), before.best_move)
 
                 with get_connection() as conn:
                     conn.execute(

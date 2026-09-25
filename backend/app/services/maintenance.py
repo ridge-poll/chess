@@ -4,7 +4,7 @@ import logging
 
 import chess
 
-from app.analysis.metrics import classify_loss, move_loss
+from app.analysis.metrics import classify_move, move_loss
 from app.db import get_connection
 from app.models import ParsedMove
 from app.pgn.openings import detect_opening
@@ -26,6 +26,8 @@ def repair_analysis_metrics() -> int:
                 ma.mate_after,
                 ma.centipawn_loss,
                 ma.classification,
+                ma.played_uci,
+                ma.best_uci,
                 m.color,
                 m.fen_after
             FROM move_analyses ma
@@ -47,7 +49,7 @@ def repair_analysis_metrics() -> int:
                 str(row["color"]),
                 is_checkmate_after,
             )
-            classification = classify_loss(loss)
+            classification = classify_move(loss, row["played_uci"], row["best_uci"])
             if loss != row["centipawn_loss"] or classification != row["classification"]:
                 conn.execute(
                     """
