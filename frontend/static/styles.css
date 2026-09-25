@@ -1696,6 +1696,112 @@ input[type="number"] {
   margin-bottom: 12px;
 }
 
+.diagnostic-header {
+  display: grid;
+  gap: 8px;
+  padding: 6px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.diagnostic-players {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.diagnostic-players h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: clamp(0.92rem, 4vw, 1.12rem);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-players h2:last-child {
+  text-align: right;
+}
+
+.diagnostic-players h2 span {
+  color: var(--muted);
+  font-size: 0.78em;
+  font-weight: 650;
+}
+
+.diagnostic-result {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.diagnostic-context {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.diagnostic-opening {
+  font-size: 0.96rem;
+  font-weight: 780;
+  text-align: center;
+}
+
+.diagnostic-analysis-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.diagnostic-analysis-state small {
+  white-space: nowrap;
+}
+
+.analysis-pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.diagnostic-analysis-state.working .analysis-pulse {
+  animation: analysis-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes analysis-pulse {
+  50% { opacity: 0.3; transform: scale(0.72); }
+}
+
+.diagnostic-investigate {
+  width: 100%;
+}
+
+.diagnostic-section {
+  margin: 0;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.diagnostic-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 34px;
+  padding: 18px 0 4px;
+  border-top: 1px solid var(--danger-border);
+}
+
+.diagnostic-danger-zone p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .analysis-toolbar {
   min-height: 28px;
 }
@@ -2610,35 +2716,39 @@ input[type="number"] {
 
 .move-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
+  border-top: 1px solid var(--line);
 }
 
 .move-pair-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
+  gap: 0;
   align-items: stretch;
+  border-bottom: 1px solid var(--line);
 }
 
 .move-cell {
-  display: grid;
+  display: flex;
   min-width: 0;
-  gap: 8px;
-  align-content: space-between;
-  min-height: 92px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 58px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
 }
 
 .move-cell.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--focus);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 var(--accent);
 }
 
 .move-cell.black {
-  background: var(--hover);
+  border-left: 1px solid var(--line);
 }
 
 .move-cell.empty {
@@ -2647,14 +2757,44 @@ input[type="number"] {
 }
 
 .move-san {
-  overflow-wrap: anywhere;
+  overflow: hidden;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .move-meta {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.move-cell-main {
+  min-width: 0;
+}
+
+.move-loss {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.move-loss span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.continuation-local-label {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
 }
 
 .branch-button {
@@ -2778,6 +2918,19 @@ input[type="number"] {
   .eval-summary-grid,
   .eval-selected {
     grid-template-columns: 1fr;
+  }
+
+  .diagnostic-analysis-state {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .diagnostic-analysis-state small {
+    grid-column: 2;
+  }
+
+  .diagnostic-danger-zone {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

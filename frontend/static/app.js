@@ -1270,26 +1270,41 @@ async function renderGameDetail(gameId) {
   state.selectedPositions = moves;
   state.startingFen = detail.starting_fen || moves[0]?.fen_before || null;
   state.selectedPly = defaultSelectedPly(moves);
+  const targetDepth = selectedDepth();
+  const analysisJob = analysisJobForGame(gameId, targetDepth);
+  const availableDepth = Number(detail.depth) || 0;
+  const analyzedAtAvailableDepth = moves.filter((move) => move.classification && move.classification !== "unknown").length;
+  const analyzedPlies = analysisJob?.analyzed_plies
+    ?? (availableDepth >= targetDepth ? analyzedAtAvailableDepth : 0);
+  const totalPlies = analysisJob?.total_plies ?? game.ply_count ?? moves.length;
+  const analysisComplete = availableDepth >= targetDepth && totalPlies > 0 && analyzedPlies >= totalPlies;
+  const analysisStatus = analysisComplete
+    ? `Depth ${availableDepth} complete`
+    : `${Math.min(analyzedPlies, totalPlies)} of ${totalPlies} plies · depth ${targetDepth}`;
   els.gameDetail.innerHTML = `
-    <section class="panel detail-header">
-      <h2>${escapeHtml(game.white || "White")} vs ${escapeHtml(game.black || "Black")}</h2>
-      <div class="stat-subtitle">${escapeHtml(game.played_at || "Unknown date")} · ${escapeHtml(game.result || "*")}</div>
-      <div class="stat-subtitle">${escapeHtml(game.opening || game.eco || "Unknown opening")}</div>
-      <div class="detail-actions">
-        <button class="secondary-button" id="analysisGameButton">Analysis Board</button>
-        <button class="primary" id="analyzeGameButton">Analyze Game</button>
-        <button class="danger-button" id="deleteGameButton">Delete Game</button>
+    <header class="diagnostic-header">
+      <div class="diagnostic-players">
+        <h2>${escapeHtml(game.white || "White")} <span>${game.white_elo || "—"}</span></h2>
+        <span class="diagnostic-result">${escapeHtml(displayResult(game.result))}</span>
+        <h2>${escapeHtml(game.black || "Black")} <span>${game.black_elo || "—"}</span></h2>
       </div>
-    </section>
-    ${renderBoardExplorer(moves, state.startingFen)}
-    <section class="panel analysis-panel">
+      <div class="diagnostic-context">${escapeHtml(game.time_class || "Unknown")} · ${escapeHtml(game.time_control || "Unknown time")} · ${escapeHtml(shortDate(game.played_at))}</div>
+      <div class="diagnostic-opening">${escapeHtml(game.opening || game.eco || "Opening not identified")}</div>
+      <div class="diagnostic-analysis-state ${analysisComplete ? "complete" : "working"}" role="status">
+        <span class="analysis-pulse" aria-hidden="true"></span>
+        <span>${analysisComplete ? "Analysis ready" : "Analyzing in the background"}</span>
+        <small>${escapeHtml(analysisStatus)}</small>
+      </div>
+      <button class="primary diagnostic-investigate" id="analysisGameButton">Investigate in Analysis</button>
+    </header>
+    <section class="diagnostic-section analysis-panel">
       <div class="panel-heading">
         <h2>Evaluation</h2>
         <span class="pill">${detail.depth == null ? "Pending" : `Depth ${detail.depth}`}</span>
       </div>
       ${renderEvaluationGraph(detail.evaluation_history || [], detail.evaluation_summary || {}, game)}
     </section>
-    <section class="panel analysis-panel">
+    <section class="diagnostic-section analysis-panel">
       <div class="panel-heading">
         <h2>Move Quality</h2>
       </div>
@@ -1302,17 +1317,11 @@ async function renderGameDetail(gameId) {
     <section class="move-list">
       ${renderMovePairs(moves)}
     </section>
+    <section class="diagnostic-danger-zone">
+      <p>Remove this game and its analysis from this profile.</p>
+      <button class="danger-button" id="deleteGameButton">Delete Game</button>
+    </section>
   `;
-  document.querySelector("#analyzeGameButton").addEventListener("click", async () => {
-    showStatus("Analysis queued. You can keep browsing while it runs.", 0);
-    try {
-      await api(`/api/analysis/games/${gameId}?depth=${selectedDepth()}${profileAmpParam()}`, { method: "POST" });
-      await loadAll();
-      showStatus("Analysis queued.");
-    } catch (error) {
-      showStatus(error.message, 8000);
-    }
-  });
   document.querySelector("#analysisGameButton").addEventListener("click", async () => {
     await openGameAnalysisBoard(gameId);
   });
@@ -1322,6 +1331,25 @@ async function renderGameDetail(gameId) {
   bindAnalysisDetailInteractions();
   updateSelectedPly();
   setView("detail");
+  if (!analysisComplete && !["queued", "running"].includes(analysisJob?.status)) {
+    void queueAutomaticGameAnalysis(gameId, targetDepth);
+  }
+}
+
+function analysisJobForGame(gameId, depth) {
+  return state.jobs.find((job) => Number(job.game_id) === Number(gameId) && Number(job.depth) === Number(depth));
+}
+
+async function queueAutomaticGameAnalysis(gameId, depth) {
+  try {
+    const job = await api(`/api/analysis/games/${gameId}?depth=${depth}${profileAmpParam()}`, { method: "POST" });
+    const existingIndex = state.jobs.findIndex((item) => Number(item.game_id) === Number(gameId) && Number(item.depth) === Number(depth));
+    if (existingIndex >= 0) state.jobs[existingIndex] = { ...state.jobs[existingIndex], ...job };
+    else state.jobs.unshift(job);
+    updatePolling();
+  } catch (error) {
+    showStatus(`Automatic analysis could not start: ${error.message}`, 8000);
+  }
 }
 
 function renderMovePairs(moves) {
@@ -1344,14 +1372,13 @@ function renderMoveCell(move, color) {
   const classification = move.classification || "pending";
   const loss = move.centipawn_loss == null ? "-" : move.centipawn_loss;
   return `
-    <div class="move-cell ${color}" data-move-ply="${move.ply}">
-      <div>
-        <div class="move-san">${move.move_number}. ${escapeHtml(move.san)}</div>
-        <div class="move-meta">Best ${escapeHtml(move.best_uci || "-")} · Eval ${formatEval(move.eval_after_cp, move.mate_after)}</div>
-        ${move.clock_seconds == null ? "" : `<div class="move-meta">Clock ${formatClock(move.clock_seconds)}</div>`}
+    <button class="move-cell ${color}" data-move-ply="${move.ply}" aria-label="Open analysis at ${escapeHtml(moveLabel(move))}">
+      <div class="move-cell-main">
+        <div class="move-san">${color === "white" ? `${move.move_number}.` : `${move.move_number}...`} ${escapeHtml(move.san)}</div>
+        <div class="move-meta">${move.clock_seconds == null ? "No clock" : formatClock(move.clock_seconds)} · Eval ${formatEval(move.eval_after_cp, move.mate_after)}</div>
       </div>
-      <span class="pill ${classificationClass(classification)}">${escapeHtml(classification)} ${loss}</span>
-    </div>
+      <span class="move-loss ${classificationClass(classification)}"><span aria-hidden="true"></span>${loss}</span>
+    </button>
   `;
 }
 
@@ -1380,8 +1407,6 @@ function renderEvaluationGraph(history, summary, game = {}) {
   const areaPath = `${path} L ${xFor(points.length - 1).toFixed(1)} ${equalityY} L ${xFor(0).toFixed(1)} ${equalityY} Z`;
   const last = points[points.length - 1];
   const swings = summary.largest_swings || [];
-  const peakUser = Math.max(...points.map((point) => Number(point.perspective_cp)));
-  const peakOpponent = Math.min(...points.map((point) => Number(point.perspective_cp)));
 
   return `
     <div class="eval-graph-wrap">
@@ -1408,11 +1433,6 @@ function renderEvaluationGraph(history, summary, game = {}) {
         <span>You +</span>
         <strong>${playerAdvantageLabel(last.eval_cp, last.mate, game)}</strong>
         <span>Opponent +</span>
-      </div>
-      <div class="eval-summary-grid">
-        <div><span>Peak You</span><strong>${perspectiveAdvantageLabel(peakUser)}</strong></div>
-        <div><span>Peak Opponent</span><strong>${perspectiveAdvantageLabel(peakOpponent)}</strong></div>
-        <div><span>Final</span><strong>${playerAdvantageLabel(last.eval_cp, last.mate, game)}</strong></div>
       </div>
       <div class="eval-selected" id="evalSelected"></div>
       ${swings.length ? `
@@ -1448,11 +1468,12 @@ function renderBoardExplorer(moves, startingFen) {
 
 function bindAnalysisDetailInteractions() {
   document.querySelectorAll("[data-eval-ply], [data-select-ply], [data-move-ply], [data-explorer-ply]").forEach((node) => {
-    node.addEventListener("click", () => {
+    node.addEventListener("click", async () => {
       const ply = Number(node.dataset.evalPly || node.dataset.selectPly || node.dataset.movePly || node.dataset.explorerPly);
       if (!Number.isNaN(ply)) {
         state.selectedPly = ply;
         updateSelectedPly();
+        if (node.matches("[data-move-ply]")) await openGameAnalysisBoardFromPly(ply);
       }
     });
   });
@@ -1658,26 +1679,16 @@ function renderBoardFirstComponent(config) {
 }
 
 function renderOpeningContinuationPanel(explorer) {
-  const panel = state.masterExplorer.fen === explorer.fen ? state.masterExplorer : null;
-  if (!panel || panel.loading) {
-    return `
-      <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
-        <div class="continuation-header"><span>Move</span><span>Games</span><span>White / Draw / Black</span></div>
-        ${Array.from({ length: 5 }, () => `<div class="continuation-skeleton"><i></i><i></i><i></i></div>`).join("")}
-      </div>`;
-  }
-  const moves = panel.data?.moves?.length ? panel.data.moves : (explorer.legal_moves || []).slice(0, 8);
-  const hasMasterData = Boolean(panel.data?.moves?.length);
+  const moves = (explorer.legal_moves || []).slice(0, 8);
   return `
     <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
-      ${panel.error ? `<div class="continuation-notice"><span>${escapeHtml(panel.error)}</span><button data-master-retry>Retry</button></div>` : ""}
-      <div class="continuation-header"><span>Move</span><span>Games</span><span>White / Draw / Black</span></div>
+      <div class="continuation-header"><span>Candidate move</span><span></span><span>Local board</span></div>
       <div class="continuation-list">
         ${moves.map((move) => `
           <button class="continuation-row" data-opening-continuation="${escapeHtml(move.uci)}">
             <strong>${escapeHtml(move.san || move.uci)}</strong>
-            <span>${hasMasterData ? formatCompactCount(move.games) : "—"}</span>
-            ${hasMasterData ? renderExplorerWdb(move) : `<span class="continuation-awaiting"><i></i><i></i><i></i></span>`}
+            <span></span>
+            <span class="continuation-local-label">Play</span>
           </button>
         `).join("")}
       </div>
@@ -2344,7 +2355,6 @@ function renderOpeningExplorer() {
   });
   updateOpeningExplorer();
   bindOpeningExplorerInteractions();
-  requestMasterExplorer();
 }
 
 function updateOpeningExplorer() {
@@ -2806,12 +2816,7 @@ if ("serviceWorker" in navigator) {
 }
 
 els.navButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
-    if (button.dataset.view === "openings") {
-      await ensureOpeningExplorer();
-      setView("openingExplorer");
-      return;
-    }
+  button.addEventListener("click", () => {
     setView(button.dataset.view);
   });
 });
