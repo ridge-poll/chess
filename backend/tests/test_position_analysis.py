@@ -16,7 +16,7 @@ SAMPLE_PGN = """
 [White "alice"]
 [Black "bob"]
 [Result "1-0"]
-[TimeControl "600"]
+[TimeControl "600+2"]
 
 1. e4 {[%clk 0:09:58]} e5 {[%clk 0:09:57]} 2. Nf3 {[%clk 0:09:54]} Nc6 1-0
 """
@@ -68,6 +68,8 @@ def test_positions_preserve_move_and_evaluation_order(tmp_path: Path, monkeypatc
     assert result["quality_counts"]["white"]["best"] == 2
     assert result["quality_counts"]["black"]["good"] == 1
     assert result["quality_counts"]["black"]["blunder"] == 1
+    assert [point["time_spent_seconds"] for point in result["time_usage"]] == [4.0, 5.0, 6.0, None]
+    assert result["positions"][2]["time_spent_seconds"] == 6.0
 
 
 def test_positions_handle_missing_analysis_and_clock_data(tmp_path: Path, monkeypatch) -> None:

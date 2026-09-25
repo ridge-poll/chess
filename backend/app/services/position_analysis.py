@@ -78,6 +78,7 @@ def get_game_positions(
         ).fetchall()
 
     positions = [_serialize_position(row) for row in rows]
+    time_usage = _time_usage(positions, game["time_control"])
     return {
         "profile_id": selected_profile_id,
         "game": game,
@@ -87,6 +88,7 @@ def get_game_positions(
         "evaluation_history": _evaluation_history(positions),
         "evaluation_summary": _evaluation_summary(positions),
         "quality_counts": _quality_counts(positions),
+        "time_usage": time_usage,
     }
 
 
@@ -197,3 +199,51 @@ def _quality_counts(positions: list[dict[str, object]]) -> dict[str, dict[str, i
             continue
         counts[side][classification] += 1
     return counts
+
+
+def _time_usage(
+    positions: list[dict[str, object]],
+    time_control: object,
+) -> list[dict[str, object]]:
+    base_seconds, increment_seconds = _parse_time_control(time_control)
+    previous_clock: dict[str, tuple[int, float]] = {}
+    usage: list[dict[str, object]] = []
+    for position in positions:
+        side = str(position["side"])
+        ply = int(position["ply"])
+        clock_value = position["clock_seconds"]
+        spent: float | None = None
+        if clock_value is not None:
+            clock = float(clock_value)
+            previous = previous_clock.get(side)
+            if previous and previous[0] == ply - 2:
+                spent = max(0.0, previous[1] + increment_seconds - clock)
+            elif ply <= 2 and base_seconds is not None:
+                spent = max(0.0, base_seconds + increment_seconds - clock)
+            previous_clock[side] = (ply, clock)
+        position["time_spent_seconds"] = spent
+        usage.append(
+            {
+                "ply": ply,
+                "move_number": position["move_number"],
+                "side": side,
+                "san": position["san"],
+                "clock_seconds": clock_value,
+                "time_spent_seconds": spent,
+            }
+        )
+    return usage
+
+
+def _parse_time_control(time_control: object) -> tuple[float | None, float]:
+    value = str(time_control or "").strip()
+    if not value or "/" in value:
+        return None, 0.0
+    first_period = value.split(":", 1)[0]
+    base_text, separator, increment_text = first_period.partition("+")
+    try:
+        base = float(base_text)
+        increment = float(increment_text) if separator else 0.0
+    except ValueError:
+        return None, 0.0
+    return base, increment

@@ -42,6 +42,7 @@ def get_game_detail(game_id: int, profile_id: int | None = None) -> dict[str, ob
         "evaluation_history": positions["evaluation_history"],
         "evaluation_summary": positions["evaluation_summary"],
         "quality_counts": positions["quality_counts"],
+        "time_usage": positions["time_usage"],
         "starting_fen": positions["starting_fen"],
     }
 

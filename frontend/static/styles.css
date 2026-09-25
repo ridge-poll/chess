@@ -32,6 +32,8 @@
   --quality-inaccuracy: #c99412;
   --quality-mistake: #d66b26;
   --quality-blunder: #b42318;
+  --time-white: #b8b8ad;
+  --time-black: #303633;
   --modal-scrim: rgba(23, 32, 38, 0.45);
   --map-white-node: #f5f4e8;
   --map-white-ink: #273029;
@@ -75,6 +77,8 @@
   --quality-inaccuracy: #e4bd4c;
   --quality-mistake: #ef9955;
   --quality-blunder: #ff8072;
+  --time-white: #e6e5da;
+  --time-black: #797b76;
   --modal-scrim: rgba(0, 0, 0, 0.62);
   --map-white-node: #dfe2d4;
   --map-white-ink: #252a27;
@@ -1798,6 +1802,18 @@ input[type="number"] {
   border-bottom: 1px solid var(--line);
 }
 
+.diagnostic-caption {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.diagnostic-empty {
+  padding: 18px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .diagnostic-danger-zone {
   display: flex;
   align-items: center;
@@ -2776,6 +2792,158 @@ input[type="number"] {
   height: 7px;
   border-radius: 50%;
   background: currentColor;
+}
+
+.quality-distribution {
+  display: grid;
+  gap: 7px;
+}
+
+.quality-distribution-head,
+.quality-distribution-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.quality-distribution-head {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quality-distribution-head span:last-child {
+  text-align: right;
+}
+
+.quality-distribution-row .quality-label {
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.quality-bar-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.quality-bar-side.left {
+  justify-content: flex-end;
+}
+
+.quality-bar-side i {
+  display: block;
+  min-width: 2px;
+  height: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.78;
+}
+
+.quality-bar-side.left i {
+  transform-origin: right;
+}
+
+.time-usage-wrap {
+  display: grid;
+  gap: 7px;
+}
+
+.time-usage-plot {
+  display: block;
+  width: 100%;
+  min-height: 142px;
+  overflow: visible;
+}
+
+.time-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.time-axis-label {
+  fill: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.time-axis-label.end {
+  text-anchor: end;
+}
+
+.time-stem line {
+  stroke-width: 1.4;
+  opacity: 0.74;
+}
+
+.time-stem circle:not(.time-hit-target) {
+  stroke-width: 1.2;
+}
+
+.time-stem.white line,
+.time-stem.white circle:not(.time-hit-target) {
+  stroke: var(--time-white);
+  fill: var(--time-white);
+}
+
+.time-stem.black line,
+.time-stem.black circle:not(.time-hit-target) {
+  stroke: var(--time-black);
+  fill: var(--time-black);
+}
+
+.time-stem.user circle:not(.time-hit-target) {
+  stroke: var(--accent);
+  stroke-width: 2.2;
+}
+
+.time-hit-target {
+  cursor: pointer;
+  fill: transparent;
+  stroke: transparent;
+}
+
+.time-usage-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.time-usage-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.time-usage-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--time-white);
+}
+
+.time-usage-legend i.black {
+  background: var(--time-black);
+}
+
+.time-usage-legend i.user {
+  border: 2px solid var(--accent);
+  background: transparent;
+}
+
+.time-usage-legend strong {
+  margin-left: auto;
+  color: var(--ink);
 }
 
 .move-table-heading {

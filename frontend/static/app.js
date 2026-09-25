@@ -1310,6 +1310,13 @@ async function renderGameDetail(gameId) {
       </div>
       ${renderQualityCounts(detail.quality_counts || {}, game)}
     </section>
+    <section class="diagnostic-section analysis-panel">
+      <div class="panel-heading">
+        <h2>Time Usage</h2>
+        <span class="diagnostic-caption">Time spent per move</span>
+      </div>
+      ${renderTimeUsagePlot(detail.time_usage || [], game)}
+    </section>
     <div class="move-table-heading">
       <span>${escapeHtml(game.white || "White")}</span>
       <span>${escapeHtml(game.black || "Black")}</span>
@@ -1467,13 +1474,13 @@ function renderBoardExplorer(moves, startingFen) {
 }
 
 function bindAnalysisDetailInteractions() {
-  document.querySelectorAll("[data-eval-ply], [data-select-ply], [data-move-ply], [data-explorer-ply]").forEach((node) => {
+  document.querySelectorAll("[data-eval-ply], [data-select-ply], [data-move-ply], [data-explorer-ply], [data-time-ply]").forEach((node) => {
     node.addEventListener("click", async () => {
-      const ply = Number(node.dataset.evalPly || node.dataset.selectPly || node.dataset.movePly || node.dataset.explorerPly);
+      const ply = Number(node.dataset.evalPly || node.dataset.selectPly || node.dataset.movePly || node.dataset.explorerPly || node.dataset.timePly);
       if (!Number.isNaN(ply)) {
         state.selectedPly = ply;
         updateSelectedPly();
-        if (node.matches("[data-move-ply]")) await openGameAnalysisBoardFromPly(ply);
+        if (node.matches("[data-move-ply], [data-time-ply]")) await openGameAnalysisBoardFromPly(ply);
       }
     });
   });
@@ -1493,8 +1500,8 @@ function bindAnalysisDetailInteractions() {
 
 function updateSelectedPly() {
   const selected = state.selectedPositions.find((position) => Number(position.ply) === Number(state.selectedPly));
-  document.querySelectorAll("[data-eval-ply], [data-move-ply], [data-select-ply], [data-explorer-ply]").forEach((node) => {
-    const ply = Number(node.dataset.evalPly || node.dataset.movePly || node.dataset.selectPly || node.dataset.explorerPly);
+  document.querySelectorAll("[data-eval-ply], [data-move-ply], [data-select-ply], [data-explorer-ply], [data-time-ply]").forEach((node) => {
+    const ply = Number(node.dataset.evalPly || node.dataset.movePly || node.dataset.selectPly || node.dataset.explorerPly || node.dataset.timePly);
     node.classList.toggle("selected", ply === Number(state.selectedPly));
   });
   updateEvaluationCursor();
@@ -2617,20 +2624,75 @@ function renderQualityCounts(counts, game) {
     if (bucket === "good") return Number(sideCounts.good || 0) + Number(sideCounts.imprecision || 0);
     return Number(sideCounts[bucket] || 0);
   };
+  const maximum = Math.max(1, ...buckets.flatMap((bucket) => [
+    bucketCount(whiteCounts, bucket),
+    bucketCount(blackCounts, bucket),
+  ]));
   return `
-    <div class="quality-grid">
-      <div class="quality-player">${escapeHtml(game.white || "White")}</div>
-      <div class="quality-player">${escapeHtml(game.black || "Black")}</div>
-      ${buckets.map((bucket) => `
-        <div class="quality-row">
-          <span class="quality-label ${classificationClass(bucket)}"><i aria-hidden="true"></i>${classificationLabel(bucket)}</span>
-          <strong>${bucketCount(whiteCounts, bucket)}</strong>
-        </div>
-        <div class="quality-row">
-          <span class="quality-label ${classificationClass(bucket)}"><i aria-hidden="true"></i>${classificationLabel(bucket)}</span>
-          <strong>${bucketCount(blackCounts, bucket)}</strong>
-        </div>
-      `).join("")}
+    <div class="quality-distribution">
+      <div class="quality-distribution-head">
+        <span>${escapeHtml(game.white || "White")}</span>
+        <span></span>
+        <span>${escapeHtml(game.black || "Black")}</span>
+      </div>
+      ${buckets.map((bucket) => {
+        const white = bucketCount(whiteCounts, bucket);
+        const black = bucketCount(blackCounts, bucket);
+        return `
+          <div class="quality-distribution-row ${classificationClass(bucket)}">
+            <div class="quality-bar-side left"><span>${white}</span><i style="width:${white / maximum * 100}%"></i></div>
+            <span class="quality-label"><i aria-hidden="true"></i>${classificationLabel(bucket)}</span>
+            <div class="quality-bar-side right"><i style="width:${black / maximum * 100}%"></i><span>${black}</span></div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderTimeUsagePlot(timeUsage, game) {
+  const points = (timeUsage || []).filter((point) => point.time_spent_seconds != null);
+  if (!points.length) {
+    return `<div class="diagnostic-empty">Clock data is not available for this game.</div>`;
+  }
+  const width = 320;
+  const height = 150;
+  const left = 18;
+  const right = 10;
+  const top = 12;
+  const baseline = 128;
+  const maxPly = Math.max(1, ...(timeUsage || []).map((point) => Number(point.ply) || 0));
+  const maxSeconds = Math.max(1, ...points.map((point) => Number(point.time_spent_seconds) || 0));
+  const userColor = userColorForGame(game);
+  const xFor = (ply) => left + ((Number(ply) - 1) / Math.max(1, maxPly - 1)) * (width - left - right);
+  const yFor = (seconds) => baseline - (Number(seconds) / maxSeconds) * (baseline - top);
+  return `
+    <div class="time-usage-wrap">
+      <svg class="time-usage-plot" viewBox="0 0 ${width} ${height}" role="img" aria-label="Time spent per move">
+        <line class="time-axis" x1="${left}" y1="${baseline}" x2="${width - right}" y2="${baseline}"></line>
+        <text class="time-axis-label" x="${left}" y="145">1</text>
+        <text class="time-axis-label end" x="${width - right}" y="145">${Math.ceil(maxPly / 2)}</text>
+        ${points.map((point) => {
+          const x = xFor(point.ply).toFixed(1);
+          const y = yFor(point.time_spent_seconds).toFixed(1);
+          const side = point.side === "black" ? "black" : "white";
+          const isUser = side === userColor;
+          const title = `${moveLabel(point)} · ${formatThinkTime(point.time_spent_seconds)}`;
+          return `
+            <g class="time-stem ${side} ${isUser ? "user" : "opponent"}">
+              <line x1="${x}" y1="${baseline}" x2="${x}" y2="${y}"></line>
+              <circle cx="${x}" cy="${y}" r="${isUser ? 3.6 : 2.6}"></circle>
+              <circle class="time-hit-target" data-time-ply="${point.ply}" cx="${x}" cy="${y}" r="8"><title>${escapeHtml(title)}</title></circle>
+            </g>
+          `;
+        }).join("")}
+      </svg>
+      <div class="time-usage-legend">
+        <span><i class="white"></i>White</span>
+        <span><i class="black"></i>Black</span>
+        <span><i class="user"></i>Your moves</span>
+        <strong>Peak ${formatThinkTime(maxSeconds)}</strong>
+      </div>
     </div>
   `;
 }
@@ -2891,6 +2953,13 @@ function formatClock(seconds) {
     return `${hours}:${minutes.toString().padStart(2, "0")}:${secs}`;
   }
   return `${minutes}:${secs}`;
+}
+
+function formatThinkTime(seconds) {
+  const value = Math.max(0, Number(seconds) || 0);
+  if (value < 10 && !Number.isInteger(value)) return `${value.toFixed(1)}s`;
+  if (value < 60) return `${Math.round(value)}s`;
+  return formatClock(value);
 }
 
 function formatNumber(value) {
