@@ -1,3 +1,14 @@
+import {
+  analysisPathMoves,
+  createAnalysisSession,
+  flipAnalysisOrientation,
+  playAnalysisMove,
+  selectAnalysisMainLinePly,
+  selectAnalysisVariationPly,
+  stepAnalysisBackward,
+  stepAnalysisForward,
+} from "./analysis-session.mjs?v=41";
+
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 const state = {
@@ -2056,7 +2067,7 @@ async function openBlankAnalysisBoard() {
     method: "POST",
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
   });
-  applyAnalysisWorkspace(workspace, null);
+  applyAnalysisWorkspace(workspace, null, [], null);
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.textContent = state.analysisReturnView === "more" ? "‹ More" : "‹ Games";
@@ -2064,6 +2075,7 @@ async function openBlankAnalysisBoard() {
 }
 
 async function openGameAnalysisBoard(gameId) {
+  state.selectedGameId = gameId;
   state.analysisReturnView = "detail";
   const workspace = await api(`/api/board/games/${gameId}${profileParam()}`);
   const startingWorkspace = await api("/api/board/position", {
@@ -2074,7 +2086,12 @@ async function openGameAnalysisBoard(gameId) {
       selected_ply: 0,
     }),
   });
-  applyAnalysisWorkspace(startingWorkspace, workspace.game || null, workspace.positions || []);
+  const analysisSession = createAnalysisSession(
+    workspace.moves || [],
+    0,
+    state.boardOrientations.analysisBoard,
+  );
+  applyAnalysisWorkspace(startingWorkspace, workspace.game || null, workspace.positions || [], analysisSession);
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.textContent = "‹ Game";
@@ -2094,20 +2111,38 @@ async function openGameAnalysisBoardFromPly(ply) {
       selected_ply: workspace.selected_ply,
     }),
   });
-  applyAnalysisWorkspace({ ...selectedWorkspace, game: workspace.game }, workspace.game || null, workspace.positions || []);
+  const analysisSession = createAnalysisSession(
+    workspace.moves || [],
+    workspace.selected_ply,
+    state.boardOrientations.analysisBoard,
+  );
+  applyAnalysisWorkspace(
+    { ...selectedWorkspace, game: workspace.game },
+    workspace.game || null,
+    workspace.positions || [],
+    analysisSession,
+  );
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.textContent = "‹ Game";
   setView("analysis");
 }
 
-function applyAnalysisWorkspace(workspace, sourceGame = undefined, savedPositions = undefined) {
+function applyAnalysisWorkspace(
+  workspace,
+  sourceGame = undefined,
+  savedPositions = undefined,
+  analysisSession = undefined,
+) {
   state.analysisBoard = {
     ...workspace,
     sourceGame: sourceGame === undefined ? state.analysisBoard?.sourceGame || null : sourceGame,
     savedPositions: savedPositions === undefined
       ? (sourceGame === undefined ? state.analysisBoard?.savedPositions || [] : workspace.positions || [])
       : savedPositions,
+    analysisSession: analysisSession === undefined
+      ? state.analysisBoard?.analysisSession || null
+      : analysisSession,
     openingName: state.analysisBoard?.openingName || "Starting position",
     selectedSquare: null,
   };
@@ -2222,6 +2257,7 @@ function updateAnalysisBoard() {
 }
 
 function savedAnalysisForCurrentMove(boardState) {
+  if (boardState?.analysisSession?.branchPoint != null) return null;
   const ply = Number(boardState?.selected_ply) || 0;
   if (!ply) return null;
   const currentMove = (boardState.move_history || []).find((move) => Number(move.ply) === ply);
@@ -2283,6 +2319,9 @@ function bindAnalysisBoardInteractions() {
         await resetAnalysisBoard();
       } else if (button.dataset.boardAction === "flip") {
         state.boardOrientations.analysisBoard = state.boardOrientations.analysisBoard === "white" ? "black" : "white";
+        if (state.analysisBoard?.analysisSession) {
+          state.analysisBoard.analysisSession = flipAnalysisOrientation(state.analysisBoard.analysisSession);
+        }
         updateAnalysisBoard();
       }
     });
@@ -2304,6 +2343,22 @@ function bindAnalysisBoardInteractions() {
 async function navigateAnalysisBoard(action) {
   const boardState = state.analysisBoard;
   if (!boardState) return;
+  if (boardState.analysisSession) {
+    let session = boardState.analysisSession;
+    if (action === "start") {
+      session = selectAnalysisMainLinePly(session, 0);
+    } else if (action === "end") {
+      session = session.branchPoint == null
+        ? selectAnalysisMainLinePly(session, session.mainLineMoves.length)
+        : selectAnalysisVariationPly(session, analysisPathMoves(session).length);
+    } else if (action === "prev") {
+      session = stepAnalysisBackward(session);
+    } else if (action === "next") {
+      session = stepAnalysisForward(session);
+    }
+    await loadAnalysisSession(session);
+    return;
+  }
   const maxPly = Math.max(0, ...(boardState.move_history || []).map((move) => Number(move.ply) || 0));
   const current = Number(boardState.selected_ply) || 0;
   const next = action === "start"
@@ -2321,6 +2376,14 @@ async function navigateAnalysisBoard(action) {
 async function selectAnalysisPly(ply) {
   const boardState = state.analysisBoard;
   if (!boardState) return;
+  if (boardState.analysisSession) {
+    const session = boardState.analysisSession.branchPoint != null
+      && Number(ply) > boardState.analysisSession.branchPoint
+      ? selectAnalysisVariationPly(boardState.analysisSession, ply)
+      : selectAnalysisMainLinePly(boardState.analysisSession, ply);
+    await loadAnalysisSession(session);
+    return;
+  }
   const workspace = await api("/api/board/position", {
     method: "POST",
     body: JSON.stringify({
@@ -2334,7 +2397,27 @@ async function selectAnalysisPly(ply) {
   renderAnalysisBoard();
 }
 
+async function loadAnalysisSession(session) {
+  const boardState = state.analysisBoard;
+  if (!boardState) return;
+  const workspace = await api("/api/board/position", {
+    method: "POST",
+    body: JSON.stringify({
+      moves: analysisPathMoves(session),
+      starting_fen: boardState.starting_fen || STARTING_FEN,
+      selected_ply: session.currentPly,
+    }),
+  });
+  applyAnalysisWorkspace(workspace, undefined, undefined, session);
+  await refreshAnalysisOpeningName();
+  renderAnalysisBoard();
+}
+
 async function resetAnalysisBoard() {
+  if (state.analysisBoard?.analysisSession) {
+    await loadAnalysisSession(selectAnalysisMainLinePly(state.analysisBoard.analysisSession, 0));
+    return;
+  }
   const workspace = await api("/api/board/position", {
     method: "POST",
     body: JSON.stringify({ moves: [], starting_fen: STARTING_FEN, selected_ply: 0 }),
@@ -2375,6 +2458,11 @@ async function handleAnalysisSquare(square) {
 async function playAnalysisUci(uci) {
   const boardState = state.analysisBoard;
   if (!boardState) return;
+  if (boardState.analysisSession) {
+    const session = playAnalysisMove(boardState.analysisSession, uci);
+    await loadAnalysisSession(session);
+    return;
+  }
   const workspace = await api("/api/board/move", {
     method: "POST",
     body: JSON.stringify({
