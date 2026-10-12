@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=42" />
-    <link rel="icon" href="/static/logo.png?v=42" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=42" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=43" />
+    <link rel="icon" href="/static/logo.png?v=43" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=43" />
   </head>
   <body>
     <div id="app">
@@ -361,6 +361,30 @@
         <span>More</span>
       </button>
     </nav>
+    <div class="modal-backdrop" id="analysisSettingsModal" hidden>
+      <section class="modal analysis-settings-modal" role="dialog" aria-modal="true" aria-labelledby="analysisSettingsTitle">
+        <div class="panel-heading">
+          <h2 id="analysisSettingsTitle">Analysis Settings</h2>
+          <button class="icon-button" id="closeAnalysisSettings" aria-label="Close analysis settings">×</button>
+        </div>
+        <fieldset class="analysis-setting-group">
+          <legend>Engine depth</legend>
+          <div class="analysis-depth-presets" role="group" aria-label="Engine depth">
+            <button data-analysis-depth="fast">Fast</button>
+            <button data-analysis-depth="normal">Normal</button>
+            <button data-analysis-depth="deep">Deep</button>
+          </div>
+        </fieldset>
+        <label class="analysis-toggle-row">
+          <span><strong>Suggestion arrows</strong><small>Show the engine's preferred move</small></span>
+          <input id="suggestionArrowsToggle" type="checkbox" />
+        </label>
+        <label class="analysis-toggle-row">
+          <span><strong>Threat arrows</strong><small>Show the likely opponent response</small></span>
+          <input id="threatArrowsToggle" type="checkbox" />
+        </label>
+      </section>
+    </div>
     <div class="modal-backdrop" id="confirmModal" hidden>
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <h2 id="confirmTitle">Delete game?</h2>
@@ -381,6 +405,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=42" type="module"></script>
+    <script src="/static/app.js?v=43" type="module"></script>
   </body>
 </html>

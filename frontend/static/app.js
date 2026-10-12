@@ -7,9 +7,23 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=42";
+} from "./analysis-session.mjs?v=43";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const ANALYSIS_DEPTHS = { fast: 8, normal: 12, deep: 18 };
+
+function storedAnalysisSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("analysisWorkspaceSettings") || "{}");
+    return {
+      depth: Object.hasOwn(ANALYSIS_DEPTHS, saved.depth) ? saved.depth : "normal",
+      suggestionArrows: saved.suggestionArrows !== false,
+      threatArrows: saved.threatArrows === true,
+    };
+  } catch (_error) {
+    return { depth: "normal", suggestionArrows: true, threatArrows: false };
+  }
+}
 
 const state = {
   dashboard: null,
@@ -55,6 +69,7 @@ const state = {
     openingExplorer: "white",
   },
   analysisBoard: null,
+  analysisSettings: storedAnalysisSettings(),
   openingExplorer: null,
   masterExplorer: { fen: null, loading: false, data: null, error: null, requestId: 0 },
   pollTimer: null,
@@ -147,6 +162,11 @@ const els = {
   jobList: document.querySelector("#jobList"),
   backToGames: document.querySelector("#backToGames"),
   backFromAnalysis: document.querySelector("#backFromAnalysis"),
+  analysisSettingsButton: document.querySelector("#analysisSettingsButton"),
+  analysisSettingsModal: document.querySelector("#analysisSettingsModal"),
+  closeAnalysisSettings: document.querySelector("#closeAnalysisSettings"),
+  suggestionArrowsToggle: document.querySelector("#suggestionArrowsToggle"),
+  threatArrowsToggle: document.querySelector("#threatArrowsToggle"),
   backFromOpening: document.querySelector("#backFromOpening"),
   gameDetail: document.querySelector("#gameDetail"),
   analysisBoardMount: document.querySelector("#analysisBoardMount"),
@@ -1674,6 +1694,9 @@ function renderAnalysisWorkspaceComponent(config) {
   const orientation = config.orientation || "white";
   return `
     <section class="analysis-workspace-shell" data-board-component="${escapeHtml(config.id)}" data-board-mode="analysis">
+      <div class="analysis-top-engine" data-engine-panel="${escapeHtml(config.id)}">
+        ${renderAnalysisEnginePanel(config.id, config.enginePanel || null, Boolean(config.allowEnginePlay))}
+      </div>
       ${renderEvaluationBar(config.evaluation)}
       <div class="analysis-board-frame">
         <div class="chessboard-wrap" data-board-orientation="${escapeHtml(orientation)}">
@@ -1685,9 +1708,6 @@ function renderAnalysisWorkspaceComponent(config) {
       <h2 class="analysis-opening-name" data-board-position-title="${escapeHtml(config.id)}">${escapeHtml(config.positionTitle || "Opening not identified")}</h2>
       <div class="analysis-scroll-region">
         ${renderAnalysisNotation(config)}
-        <div class="engine-candidates analysis-engine-panel" data-engine-panel="${escapeHtml(config.id)}">
-          ${renderEnginePanel(config.id, config.enginePanel || null, config.engineGame || {}, Boolean(config.allowEnginePlay))}
-        </div>
       </div>
       <div class="analysis-bottom-controls" aria-label="Analysis controls">
         <div class="analysis-menu-anchor">
@@ -1909,6 +1929,37 @@ function updateBoardComponent(config) {
       destination.insertAdjacentHTML("beforeend", renderBoardQualityDot(config.lastMoveQuality.classification));
     }
   }
+  if (config.engineArrows?.length) {
+    board.insertAdjacentHTML("beforeend", renderBoardArrows(config.engineArrows, orientation));
+  }
+}
+
+function renderBoardArrows(arrows, orientation) {
+  const rendered = arrows.map((arrow) => {
+    const from = boardSquareCenter(String(arrow.uci || "").slice(0, 2), orientation);
+    const to = boardSquareCenter(String(arrow.uci || "").slice(2, 4), orientation);
+    if (!from || !to) return "";
+    const className = arrow.type === "threat" ? "threat" : "suggestion";
+    return `<line class="board-engine-arrow ${className}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" marker-end="url(#arrow-${className})"></line>`;
+  }).join("");
+  return `
+    <svg class="board-arrow-layer" viewBox="0 0 8 8" aria-hidden="true">
+      <defs>
+        <marker id="arrow-suggestion" markerWidth="3.2" markerHeight="3.2" refX="2.35" refY="1.6" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L3.2,1.6 L0,3.2 Z"></path></marker>
+        <marker id="arrow-threat" markerWidth="3.2" markerHeight="3.2" refX="2.35" refY="1.6" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L3.2,1.6 L0,3.2 Z"></path></marker>
+      </defs>
+      ${rendered}
+    </svg>
+  `;
+}
+
+function boardSquareCenter(square, orientation) {
+  if (!/^[a-h][1-8]$/.test(square)) return null;
+  const file = square.charCodeAt(0) - 97;
+  const rank = Number(square[1]);
+  return orientation === "black"
+    ? { x: 7.5 - file, y: rank - 0.5 }
+    : { x: file + 0.5, y: 8.5 - rank };
 }
 
 function renderBoardQualityDot(classification) {
@@ -1963,7 +2014,7 @@ async function requestPositionEngine(boardId, fen, game = {}, allowPlay = false)
   try {
     const engine = await api("/api/analysis/position", {
       method: "POST",
-      body: JSON.stringify({ fen, depth: selectedDepth(), multipv: 3 }),
+      body: JSON.stringify({ fen, depth: analysisDepth(), multipv: 3 }),
     });
     const current = state.enginePanels[boardId];
     if (!current || current.requestId !== requestId || current.fen !== fen) return;
@@ -1979,9 +2030,32 @@ async function requestPositionEngine(boardId, fen, game = {}, allowPlay = false)
 function updateEnginePanel(boardId, game = {}, allowPlay = false) {
   const target = document.querySelector(`[data-engine-panel="${boardId}"]`);
   if (!target) return;
-  target.innerHTML = renderEnginePanel(boardId, state.enginePanels[boardId], game, allowPlay);
+  target.innerHTML = boardId === "analysisBoard"
+    ? renderAnalysisEnginePanel(boardId, state.enginePanels[boardId], allowPlay)
+    : renderEnginePanel(boardId, state.enginePanels[boardId], game, allowPlay);
   bindEngineCandidateInteractions(boardId, allowPlay);
-  if (boardId === "analysisBoard") updateAnalysisEvaluationBar();
+  if (boardId === "analysisBoard") {
+    updateAnalysisEvaluationBar();
+    updateAnalysisEngineArrows();
+  }
+}
+
+function renderAnalysisEnginePanel(boardId, panel, allowPlay = false) {
+  if (!panel || panel.loading) {
+    return `<div class="analysis-engine-loading" aria-label="Engine thinking"><i></i><i></i></div>`;
+  }
+  if (panel.error) {
+    return `<div class="analysis-engine-unavailable">Engine unavailable</div>`;
+  }
+  const candidates = (panel.engine?.candidates || []).slice(0, 2);
+  if (!candidates.length) return `<div class="analysis-engine-unavailable">No legal engine lines</div>`;
+  return candidates.map((candidate) => `
+    <button class="analysis-engine-line" data-engine-candidate="${escapeHtml(boardId)}" data-engine-uci="${escapeHtml(candidate.uci || "")}" ${allowPlay ? "" : "disabled"}>
+      <strong>${escapeHtml(formatEngineEval(candidate.score_cp, candidate.mate))}</strong>
+      <span>${escapeHtml(candidate.san || candidate.uci || "-")}</span>
+      <small>${escapeHtml((candidate.pv_san || []).slice(1, 6).join(" "))}</small>
+    </button>
+  `).join("");
 }
 
 function renderEnginePanel(boardId, panel, game = {}, allowPlay = false) {
@@ -2322,11 +2396,36 @@ function updateAnalysisBoard() {
       square: destinationSquare(savedMove.uci),
       classification: savedMove.classification,
     } : null,
+    engineArrows: analysisEngineArrows(),
   });
   updateAnalysisEvaluationBar();
   const title = document.querySelector('[data-board-position-title="analysisBoard"]');
   if (title) title.textContent = boardState.openingName || "Opening not identified";
   requestPositionEngine("analysisBoard", boardState.fen, {}, true);
+}
+
+function analysisEngineArrows() {
+  const candidate = state.enginePanels.analysisBoard?.engine?.candidates?.[0];
+  if (!candidate) return [];
+  const arrows = [];
+  if (state.analysisSettings.suggestionArrows && candidate.uci) {
+    arrows.push({ type: "suggestion", uci: candidate.uci });
+  }
+  const response = candidate.pv_uci?.[1];
+  if (state.analysisSettings.threatArrows && response) {
+    arrows.push({ type: "threat", uci: response });
+  }
+  return arrows;
+}
+
+function updateAnalysisEngineArrows() {
+  const board = document.querySelector('[data-board-surface="analysisBoard"]');
+  if (!board) return;
+  board.querySelector(".board-arrow-layer")?.remove();
+  const arrows = analysisEngineArrows();
+  if (arrows.length) {
+    board.insertAdjacentHTML("beforeend", renderBoardArrows(arrows, state.boardOrientations.analysisBoard));
+  }
 }
 
 function savedAnalysisForCurrentMove(boardState) {
@@ -3360,6 +3459,70 @@ els.themeToggleButton.addEventListener("click", () => {
   updateThemeButton();
 });
 
+els.analysisSettingsButton.addEventListener("click", () => {
+  renderAnalysisSettings();
+  els.analysisSettingsModal.hidden = false;
+});
+
+els.closeAnalysisSettings.addEventListener("click", () => {
+  els.analysisSettingsModal.hidden = true;
+});
+
+els.analysisSettingsModal.addEventListener("click", (event) => {
+  if (event.target === els.analysisSettingsModal) els.analysisSettingsModal.hidden = true;
+});
+
+document.querySelectorAll("[data-analysis-depth]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    const depth = button.dataset.analysisDepth;
+    if (!Object.hasOwn(ANALYSIS_DEPTHS, depth) || depth === state.analysisSettings.depth) return;
+    state.analysisSettings.depth = depth;
+    persistAnalysisSettings();
+    renderAnalysisSettings();
+    await refreshCurrentPositionEngine();
+  });
+});
+
+els.suggestionArrowsToggle.addEventListener("change", () => {
+  state.analysisSettings.suggestionArrows = els.suggestionArrowsToggle.checked;
+  persistAnalysisSettings();
+  updateAnalysisEngineArrows();
+});
+
+els.threatArrowsToggle.addEventListener("change", () => {
+  state.analysisSettings.threatArrows = els.threatArrowsToggle.checked;
+  persistAnalysisSettings();
+  updateAnalysisEngineArrows();
+});
+
+function renderAnalysisSettings() {
+  document.querySelectorAll("[data-analysis-depth]").forEach((button) => {
+    const selected = button.dataset.analysisDepth === state.analysisSettings.depth;
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  });
+  els.suggestionArrowsToggle.checked = state.analysisSettings.suggestionArrows;
+  els.threatArrowsToggle.checked = state.analysisSettings.threatArrows;
+}
+
+function persistAnalysisSettings() {
+  localStorage.setItem("analysisWorkspaceSettings", JSON.stringify(state.analysisSettings));
+}
+
+async function refreshCurrentPositionEngine() {
+  const boardState = state.analysisBoard;
+  if (!boardState?.fen) return;
+  const current = state.enginePanels.analysisBoard;
+  state.enginePanels.analysisBoard = {
+    fen: null,
+    loading: false,
+    engine: null,
+    error: null,
+    requestId: Number(current?.requestId || 0) + 1,
+  };
+  await requestPositionEngine("analysisBoard", boardState.fen, {}, true);
+}
+
 function updateThemeButton() {
   els.themeToggleButton.textContent = state.theme === "dark" ? "Light Mode" : "Dark Mode";
   els.themeToggleButton.setAttribute("aria-label", state.theme === "dark" ? "Switch to light mode" : "Switch to dark mode");
@@ -3540,6 +3703,10 @@ function selectedDepth() {
   const depth = Number(els.depthInput.value);
   if (!Number.isFinite(depth)) return 10;
   return Math.max(1, Math.min(30, Math.round(depth)));
+}
+
+function analysisDepth() {
+  return ANALYSIS_DEPTHS[state.analysisSettings.depth] || ANALYSIS_DEPTHS.normal;
 }
 
 function updatePolling() {

@@ -1999,9 +1999,81 @@ input[type="number"] {
 
 .analysis-workspace-shell {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: var(--bg);
+}
+
+.analysis-top-engine {
+  display: grid;
+  min-height: 64px;
+  padding: 2px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62%, transparent);
+  background: var(--surface);
+}
+
+.analysis-engine-line {
+  display: grid;
+  grid-template-columns: 54px 48px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.analysis-engine-line + .analysis-engine-line {
+  border-top: 1px solid color-mix(in srgb, var(--line) 48%, transparent);
+}
+
+.analysis-engine-line strong {
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-engine-line span {
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.analysis-engine-line small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-engine-loading {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  min-height: 60px;
+}
+
+.analysis-engine-loading i {
+  display: block;
+  width: 78%;
+  height: 7px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--line) 72%, transparent);
+  animation: engine-pulse 1.2s ease-in-out infinite alternate;
+}
+
+.analysis-engine-loading i:last-child {
+  width: 62%;
+}
+
+.analysis-engine-unavailable {
+  display: grid;
+  place-items: center start;
+  min-height: 60px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
 }
 
 .analysis-board-frame {
@@ -2520,6 +2592,7 @@ input[type="number"] {
 
 .chessboard {
   grid-area: board;
+  position: relative;
   display: grid;
   grid-template-columns: repeat(8, minmax(0, 1fr));
   width: 100%;
@@ -2528,6 +2601,38 @@ input[type="number"] {
   border-radius: var(--radius);
   background: var(--board-light);
   aspect-ratio: 1;
+}
+
+.board-arrow-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.board-engine-arrow {
+  stroke-linecap: round;
+  stroke-width: 0.13;
+  opacity: 0.72;
+}
+
+.board-engine-arrow.suggestion {
+  stroke: #81b64c;
+}
+
+.board-engine-arrow.threat {
+  stroke: #e5735c;
+}
+
+#arrow-suggestion path {
+  fill: #81b64c;
+}
+
+#arrow-threat path {
+  fill: #e5735c;
 }
 
 .board-square {
@@ -3537,4 +3642,87 @@ input[type="number"] {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   margin-top: 14px;
+}
+
+.analysis-settings-modal {
+  align-self: end;
+  width: min(100%, 390px);
+  padding: 16px 16px max(18px, env(safe-area-inset-bottom));
+  border-radius: 8px 8px 0 0;
+}
+
+.analysis-setting-group {
+  min-width: 0;
+  margin: 12px 0 16px;
+  padding: 0;
+  border: 0;
+}
+
+.analysis-setting-group legend {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.analysis-depth-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.analysis-depth-presets button {
+  min-height: 38px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.analysis-depth-presets button.selected {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.analysis-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 54px;
+  border-top: 1px solid var(--line);
+}
+
+.analysis-toggle-row span {
+  display: grid;
+  gap: 2px;
+}
+
+.analysis-toggle-row strong {
+  font-size: 0.82rem;
+}
+
+.analysis-toggle-row small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.analysis-toggle-row input {
+  width: 22px;
+  height: 22px;
+}
+
+@media (min-width: 720px) {
+  .analysis-settings-modal {
+    align-self: center;
+    border-radius: 8px;
+  }
 }
