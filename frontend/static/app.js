@@ -7,7 +7,7 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=47";
+} from "./analysis-session.mjs?v=50";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
@@ -1710,7 +1710,7 @@ function renderOpeningWorkspaceComponent(config) {
       </div>
       <div class="analysis-bottom-controls" aria-label="Opening Explorer controls">
         <div class="analysis-menu-anchor">
-          <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="menu" title="Menu" aria-label="Menu">
+          <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="menu" title="Menu" aria-label="Menu" aria-expanded="false">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
           </button>
           <div class="analysis-quick-menu" data-opening-menu hidden>
@@ -1749,7 +1749,7 @@ function renderAnalysisWorkspaceComponent(config) {
       </div>
       <div class="analysis-bottom-controls" aria-label="Analysis controls">
         <div class="analysis-menu-anchor">
-          <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="menu" title="Menu" aria-label="Menu">
+          <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="menu" title="Menu" aria-label="Menu" aria-expanded="false">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
           </button>
           <div class="analysis-quick-menu" data-analysis-menu hidden>
@@ -1860,7 +1860,7 @@ function renderOpeningContinuationPanel(explorer) {
   const moves = (explorer.legal_moves || []).slice(0, 8);
   return `
     <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
-      <div class="continuation-header"><span>Candidate move</span><span></span><span>Local board</span></div>
+      <div class="continuation-header"><span>Move</span><span></span><span>Play</span></div>
       <div class="continuation-list">
         ${moves.map((move) => `
           <button class="continuation-row" data-opening-continuation="${escapeHtml(move.uci)}">
@@ -2551,7 +2551,10 @@ function bindAnalysisBoardInteractions() {
         updateAnalysisBoard();
       } else if (button.dataset.boardAction === "menu") {
         const menu = document.querySelector("[data-analysis-menu]");
-        if (menu) menu.hidden = !menu.hidden;
+        if (menu) {
+          menu.hidden = !menu.hidden;
+          button.setAttribute("aria-expanded", String(!menu.hidden));
+        }
       }
     });
   });
@@ -2867,7 +2870,10 @@ function bindOpeningExplorerInteractions() {
         updateOpeningExplorer();
       } else if (button.dataset.boardAction === "menu") {
         const menu = document.querySelector("[data-opening-menu]");
-        if (menu) menu.hidden = !menu.hidden;
+        if (menu) {
+          menu.hidden = !menu.hidden;
+          button.setAttribute("aria-expanded", String(!menu.hidden));
+        }
       }
     });
   });
@@ -3519,6 +3525,24 @@ els.closeAnalysisSettings.addEventListener("click", () => {
 
 els.analysisSettingsModal.addEventListener("click", (event) => {
   if (event.target === els.analysisSettingsModal) els.analysisSettingsModal.hidden = true;
+});
+
+document.addEventListener("click", (event) => {
+  if (event.target instanceof Element && event.target.closest(".analysis-menu-anchor")) return;
+  document.querySelectorAll("[data-analysis-menu], [data-opening-menu]").forEach((menu) => {
+    menu.hidden = true;
+  });
+  document.querySelectorAll('[data-board-action="menu"]').forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  els.analysisSettingsModal.hidden = true;
+  document.querySelectorAll("[data-analysis-menu], [data-opening-menu]").forEach((menu) => {
+    menu.hidden = true;
+  });
 });
 
 document.querySelectorAll("[data-analysis-depth]").forEach((button) => {

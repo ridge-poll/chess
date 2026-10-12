@@ -119,6 +119,15 @@ button {
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--focus) 72%, transparent);
+  outline-offset: 2px;
 }
 
 select {
@@ -1362,6 +1371,12 @@ input[type="number"] {
   .map-node-slot,
   .map-node circle {
     transition: none !important;
+  }
+}
+
+@media (max-height: 620px) {
+  body.workspace-active .analysis-scroll-region {
+    padding-bottom: 0;
   }
 }
 
@@ -2667,6 +2682,7 @@ input[type="number"] {
 
 .board-square.interactive {
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 .board-square.selected {
@@ -3758,5 +3774,23 @@ input[type="number"] {
 
   .analysis-workspace-shell .chessboard-wrap {
     width: min(62dvh, 560px);
+  }
+
+  .analysis-top-engine,
+  .analysis-scroll-region,
+  .analysis-bottom-controls {
+    width: min(100%, 760px);
+    margin-inline: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
