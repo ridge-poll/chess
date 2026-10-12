@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 import chess
 
@@ -11,6 +13,7 @@ from app.models import EngineCandidate, EngineEvaluation, PositionEngineAnalysis
 
 DEFAULT_MULTIPV = 3
 MAX_MULTIPV = 5
+PROGRESSIVE_DEPTHS = (6, 10)
 
 
 def analyze_position(
@@ -21,6 +24,54 @@ def analyze_position(
 ) -> dict[str, object]:
     analysis = get_or_create_position_analysis(fen, depth, multipv, engine)
     return serialize_position_analysis(analysis, multipv)
+
+
+async def progressive_position_results(
+    fen: str,
+    target_depth: int,
+    multipv: int = DEFAULT_MULTIPV,
+    *,
+    is_cancelled: Callable[[], Awaitable[bool]] | None = None,
+    analyzer: Callable[[str, int, int], dict[str, object]] = analyze_position,
+) -> AsyncIterator[dict[str, object]]:
+    """Yield cached and increasingly deep snapshots for one position."""
+    requested_lines = _normalize_multipv_for_fen(fen, multipv)
+    target = max(1, int(target_depth))
+    cached = _strongest_cached_position_analysis(fen, target, requested_lines)
+    completed_depth = 0
+    if cached:
+        completed_depth = cached.evaluation.depth
+        yield _progressive_snapshot(
+            serialize_position_analysis(cached, requested_lines),
+            target,
+            cached=True,
+        )
+        if completed_depth >= target:
+            return
+
+    stages = sorted({depth for depth in (*PROGRESSIVE_DEPTHS, target) if completed_depth < depth <= target})
+    for depth in stages:
+        if is_cancelled and await is_cancelled():
+            return
+        result = await asyncio.to_thread(analyzer, fen, depth, requested_lines)
+        if is_cancelled and await is_cancelled():
+            return
+        yield _progressive_snapshot(result, target, cached=False)
+
+
+def _progressive_snapshot(
+    result: dict[str, object],
+    target_depth: int,
+    *,
+    cached: bool,
+) -> dict[str, object]:
+    depth = int(result.get("depth") or 0)
+    return {
+        **result,
+        "target_depth": target_depth,
+        "complete": depth >= target_depth,
+        "cached": cached,
+    }
 
 
 def get_or_create_position_analysis(
@@ -133,6 +184,27 @@ def _cached_position_analysis(fen: str, depth: int, multipv: int) -> PositionEng
         for row in candidate_rows
     ]
     return PositionEngineAnalysis(evaluation=evaluation, candidates=candidates)
+
+
+def _strongest_cached_position_analysis(
+    fen: str,
+    maximum_depth: int,
+    multipv: int,
+) -> PositionEngineAnalysis | None:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT depth FROM position_evaluations
+            WHERE fen = ? AND depth <= ?
+            ORDER BY depth DESC
+            """,
+            (fen, maximum_depth),
+        ).fetchall()
+    for row in rows:
+        cached = _cached_position_analysis(fen, int(row["depth"]), multipv)
+        if cached:
+            return cached
+    return None
 
 
 def _store_position_analysis(analysis: PositionEngineAnalysis) -> None:

@@ -6,9 +6,14 @@ import chess
 
 import app.config as config
 import app.db as db
-from app.api.analysis import PositionAnalysisRequest, position_analysis
+from app.api.analysis import PositionAnalysisRequest, position_analysis, progressive_position_analysis
 from app.models import EngineCandidate, EngineEvaluation, PositionEngineAnalysis
-from app.services.engine_analysis import analyze_position, get_or_create_position_analysis, opponent_capture_threats
+from app.services.engine_analysis import (
+    analyze_position,
+    get_or_create_position_analysis,
+    opponent_capture_threats,
+    progressive_position_results,
+)
 
 
 class FakeStockfish:
@@ -145,3 +150,114 @@ def test_opponent_threats_only_include_captures_for_non_moving_side() -> None:
 
     assert opponent_capture_threats(fen) == ["d5e4"]
     assert opponent_capture_threats("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") == []
+
+
+def test_progressive_analysis_yields_shallow_results_before_target(tmp_path: Path, monkeypatch) -> None:
+    _setup_db(tmp_path, monkeypatch)
+    calls: list[int] = []
+
+    def analyzer(fen: str, depth: int, multipv: int) -> dict[str, object]:
+        calls.append(depth)
+        return {"status": "ok", "fen": fen, "depth": depth, "candidates": [{"rank": 1}] * multipv}
+
+    async def collect() -> list[dict[str, object]]:
+        return [
+            result
+            async for result in progressive_position_results(
+                chess.STARTING_FEN,
+                14,
+                2,
+                analyzer=analyzer,
+            )
+        ]
+
+    results = asyncio.run(collect())
+
+    assert calls == [6, 10, 14]
+    assert [result["depth"] for result in results] == [6, 10, 14]
+    assert [result["complete"] for result in results] == [False, False, True]
+
+
+def test_progressive_analysis_stops_before_next_stage_when_cancelled(tmp_path: Path, monkeypatch) -> None:
+    _setup_db(tmp_path, monkeypatch)
+    calls: list[int] = []
+    cancellation_checks = 0
+
+    def analyzer(fen: str, depth: int, multipv: int) -> dict[str, object]:
+        calls.append(depth)
+        return {"status": "ok", "fen": fen, "depth": depth, "candidates": []}
+
+    async def is_cancelled() -> bool:
+        nonlocal cancellation_checks
+        cancellation_checks += 1
+        return cancellation_checks >= 3
+
+    async def collect() -> list[dict[str, object]]:
+        return [
+            result
+            async for result in progressive_position_results(
+                chess.STARTING_FEN,
+                14,
+                2,
+                is_cancelled=is_cancelled,
+                analyzer=analyzer,
+            )
+        ]
+
+    results = asyncio.run(collect())
+
+    assert calls == [6]
+    assert [result["depth"] for result in results] == [6]
+
+
+def test_progressive_analysis_returns_strongest_cache_immediately(tmp_path: Path, monkeypatch) -> None:
+    _setup_db(tmp_path, monkeypatch)
+    engine = FakeStockfish()
+    get_or_create_position_analysis(chess.STARTING_FEN, depth=10, multipv=2, engine=engine)
+    calls: list[int] = []
+
+    def analyzer(fen: str, depth: int, multipv: int) -> dict[str, object]:
+        calls.append(depth)
+        return {"status": "ok", "fen": fen, "depth": depth, "candidates": []}
+
+    async def collect() -> list[dict[str, object]]:
+        return [
+            result
+            async for result in progressive_position_results(
+                chess.STARTING_FEN,
+                14,
+                2,
+                analyzer=analyzer,
+            )
+        ]
+
+    results = asyncio.run(collect())
+
+    assert results[0]["depth"] == 10
+    assert results[0]["cached"] is True
+    assert calls == [14]
+    assert results[-1]["complete"] is True
+
+
+def test_progressive_stream_echoes_request_identifier(monkeypatch) -> None:
+    async def fake_results(*_args, **_kwargs):
+        yield {"status": "ok", "depth": 6, "complete": True}
+
+    class FakeRequest:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    monkeypatch.setattr("app.api.analysis.progressive_position_results", fake_results)
+
+    async def read_stream() -> str:
+        response = await progressive_position_analysis(
+            PositionAnalysisRequest(fen=chess.STARTING_FEN, depth=6, request_id="board-42"),
+            FakeRequest(),  # type: ignore[arg-type]
+        )
+        chunks = [chunk async for chunk in response.body_iterator]
+        return "".join(chunk.decode() if isinstance(chunk, bytes) else chunk for chunk in chunks)
+
+    body = asyncio.run(read_stream())
+
+    assert '"request_id":"board-42"' in body
+    assert '"depth":6' in body
