@@ -7,7 +7,7 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=41";
+} from "./analysis-session.mjs?v=42";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -1615,6 +1615,7 @@ function updateExplorerBoard(selected) {
 }
 
 function renderBoardComponent(config) {
+  if (config.analysisWorkspace) return renderAnalysisWorkspaceComponent(config);
   if (config.boardFirst) return renderBoardFirstComponent(config);
   const orientation = config.orientation || "white";
   const positions = config.positions || [];
@@ -1667,6 +1668,84 @@ function renderBoardComponent(config) {
       </div>
     </section>
   `;
+}
+
+function renderAnalysisWorkspaceComponent(config) {
+  const orientation = config.orientation || "white";
+  return `
+    <section class="analysis-workspace-shell" data-board-component="${escapeHtml(config.id)}" data-board-mode="analysis">
+      ${renderEvaluationBar(config.evaluation)}
+      <div class="analysis-board-frame">
+        <div class="chessboard-wrap" data-board-orientation="${escapeHtml(orientation)}">
+          <div class="board-rank-labels" data-board-ranks="${escapeHtml(config.id)}" aria-hidden="true">${renderRankLabels(orientation)}</div>
+          <div class="chessboard" id="chessboard-${escapeHtml(config.id)}" data-board-surface="${escapeHtml(config.id)}" aria-label="Chess board"></div>
+          <div class="board-file-labels" data-board-files="${escapeHtml(config.id)}" aria-hidden="true">${renderFileLabels(orientation)}</div>
+        </div>
+      </div>
+      <h2 class="analysis-opening-name" data-board-position-title="${escapeHtml(config.id)}">${escapeHtml(config.positionTitle || "Opening not identified")}</h2>
+      <div class="analysis-scroll-region">
+        ${renderAnalysisNotation(config)}
+        <div class="engine-candidates analysis-engine-panel" data-engine-panel="${escapeHtml(config.id)}">
+          ${renderEnginePanel(config.id, config.enginePanel || null, config.engineGame || {}, Boolean(config.allowEnginePlay))}
+        </div>
+      </div>
+      <div class="analysis-bottom-controls" aria-label="Analysis controls">
+        <div class="analysis-menu-anchor">
+          <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="menu" title="Menu" aria-label="Menu">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>
+          </button>
+          <div class="analysis-quick-menu" data-analysis-menu hidden>
+            <button data-board-id="${escapeHtml(config.id)}" data-board-action="reset">Reset line</button>
+          </div>
+        </div>
+        <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="flip" title="Flip board" aria-label="Flip board">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 7h11l-3-3M17 17H6l3 3M18 7l-3 3M6 17l3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </button>
+        <span></span>
+        <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="prev" title="Previous move" aria-label="Previous move">‹</button>
+        <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next move" aria-label="Next move">›</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderAnalysisNotation(config) {
+  const session = config.analysisSession;
+  const pathPositions = [...(config.positions || [])].sort((a, b) => Number(a.ply) - Number(b.ply));
+  const savedPositions = [...(config.savedPositions || [])]
+    .filter((move) => Number(move.ply) > 0)
+    .sort((a, b) => Number(a.ply) - Number(b.ply));
+  const mainPositions = session && savedPositions.length ? savedPositions : pathPositions;
+  if (!mainPositions.length) {
+    return '<div class="analysis-notation empty" aria-label="Move notation"></div>';
+  }
+
+  const branchPoint = session?.branchPoint;
+  const variation = branchPoint == null
+    ? []
+    : pathPositions.filter((move) => Number(move.ply) > Number(branchPoint));
+  const mainTokens = mainPositions.map((move) => {
+    const ply = Number(move.ply);
+    const prefix = ply % 2 === 1 ? `${Math.ceil(ply / 2)}. ` : "";
+    const selected = branchPoint == null && ply === Number(config.selectedPly) ? " selected" : "";
+    return `<button class="notation-move${selected}" data-analysis-main-ply="${ply}">${prefix}${escapeHtml(move.san || move.uci || "")}</button>`;
+  });
+
+  if (branchPoint != null && variation.length) {
+    const variationTokens = variation.map((move, index) => {
+      const ply = Number(move.ply);
+      const prefix = index === 0 && ply % 2 === 0
+        ? `${Math.ceil(ply / 2)}... `
+        : ply % 2 === 1
+          ? `${Math.ceil(ply / 2)}. `
+          : "";
+      const selected = ply === Number(config.selectedPly) ? " selected" : "";
+      return `<button class="notation-move variation${selected}" data-analysis-variation-ply="${ply}">${prefix}${escapeHtml(move.san || move.uci || "")}</button>`;
+    }).join("");
+    mainTokens.splice(Number(branchPoint), 0, `<span class="notation-variation">(${variationTokens})</span>`);
+  }
+
+  return `<div class="analysis-notation" aria-label="Move notation">${mainTokens.join("")}</div>`;
 }
 
 function renderBoardFirstComponent(config) {
@@ -1842,9 +1921,13 @@ function renderBoardQualityDot(classification) {
 function renderEvaluationBar(evaluation = {}) {
   const display = evaluationDisplay(evaluation.cp, evaluation.mate, evaluation.mateWinner);
   return `
-    <div class="evaluation-bar" data-analysis-evaluation-bar role="img" aria-label="${escapeHtml(display.label)}" title="${escapeHtml(display.label)}">
-      <span class="evaluation-bar-white" data-evaluation-white style="height:${display.whitePercent}%"></span>
-      <span class="evaluation-bar-divider" data-evaluation-divider style="bottom:${display.whitePercent}%"></span>
+    <div class="evaluation-strip">
+      <span>White</span>
+      <div class="evaluation-bar" data-analysis-evaluation-bar role="img" aria-label="${escapeHtml(display.label)}" title="${escapeHtml(display.label)}">
+        <span class="evaluation-bar-white" data-evaluation-white style="width:${display.whitePercent}%"></span>
+        <span class="evaluation-bar-divider" data-evaluation-divider style="left:${display.whitePercent}%"></span>
+      </div>
+      <span>Black</span>
     </div>
   `;
 }
@@ -2070,7 +2153,7 @@ async function openBlankAnalysisBoard() {
   applyAnalysisWorkspace(workspace, null, [], null);
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
-  els.backFromAnalysis.textContent = state.analysisReturnView === "more" ? "‹ More" : "‹ Games";
+  els.backFromAnalysis.setAttribute("aria-label", state.analysisReturnView === "more" ? "Back to More" : "Back to Games");
   setView("analysis");
 }
 
@@ -2094,7 +2177,7 @@ async function openGameAnalysisBoard(gameId) {
   applyAnalysisWorkspace(startingWorkspace, workspace.game || null, workspace.positions || [], analysisSession);
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
-  els.backFromAnalysis.textContent = "‹ Game";
+  els.backFromAnalysis.setAttribute("aria-label", "Back to game");
   setView("analysis");
 }
 
@@ -2124,7 +2207,7 @@ async function openGameAnalysisBoardFromPly(ply) {
   );
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
-  els.backFromAnalysis.textContent = "‹ Game";
+  els.backFromAnalysis.setAttribute("aria-label", "Back to game");
   setView("analysis");
 }
 
@@ -2193,12 +2276,12 @@ function renderAnalysisBoard() {
     allowEnginePlay: true,
     enginePanel: state.enginePanels.analysisBoard,
     allowInteraction: true,
-    boardFirst: true,
+    analysisWorkspace: true,
     showEvaluationBar: true,
     evaluation,
     positionTitle: boardState.openingName || "Opening not identified",
-    statusLabel: positionStatusText(boardState),
-    timelineAttribute: "data-analysis-ply",
+    analysisSession: boardState.analysisSession,
+    savedPositions: boardState.savedPositions || [],
   });
   updateAnalysisBoard();
   bindAnalysisBoardInteractions();
@@ -2241,16 +2324,6 @@ function updateAnalysisBoard() {
     } : null,
   });
   updateAnalysisEvaluationBar();
-  document.querySelectorAll("[data-analysis-ply]").forEach((node) => {
-    node.classList.toggle("selected", Number(node.dataset.analysisPly) === Number(boardState.selected_ply));
-  });
-
-  const indicator = document.querySelector('[data-board-indicator="analysisBoard"]');
-  if (indicator) indicator.textContent = selected?.ply ? moveLabel(selected) : "Start";
-
-  const current = document.querySelector('[data-board-current="analysisBoard"]');
-  if (!current) return;
-  current.textContent = positionStatusText(boardState);
   const title = document.querySelector('[data-board-position-title="analysisBoard"]');
   if (title) title.textContent = boardState.openingName || "Opening not identified";
   requestPositionEngine("analysisBoard", boardState.fen, {}, true);
@@ -2296,8 +2369,8 @@ function updateAnalysisEvaluationBar() {
   const display = evaluationDisplay(evaluation.cp, evaluation.mate, evaluation.mateWinner);
   const white = bar.querySelector("[data-evaluation-white]");
   const divider = bar.querySelector("[data-evaluation-divider]");
-  if (white) white.style.height = `${display.whitePercent}%`;
-  if (divider) divider.style.bottom = `${display.whitePercent}%`;
+  if (white) white.style.width = `${display.whitePercent}%`;
+  if (divider) divider.style.left = `${display.whitePercent}%`;
   bar.setAttribute("aria-label", display.label);
   bar.title = display.label;
 }
@@ -2323,12 +2396,20 @@ function bindAnalysisBoardInteractions() {
           state.analysisBoard.analysisSession = flipAnalysisOrientation(state.analysisBoard.analysisSession);
         }
         updateAnalysisBoard();
+      } else if (button.dataset.boardAction === "menu") {
+        const menu = document.querySelector("[data-analysis-menu]");
+        if (menu) menu.hidden = !menu.hidden;
       }
     });
   });
-  document.querySelectorAll("[data-analysis-ply]").forEach((node) => {
+  document.querySelectorAll("[data-analysis-main-ply]").forEach((node) => {
     node.addEventListener("click", async () => {
-      await selectAnalysisPly(Number(node.dataset.analysisPly));
+      await selectAnalysisMainPly(Number(node.dataset.analysisMainPly));
+    });
+  });
+  document.querySelectorAll("[data-analysis-variation-ply]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      await selectAnalysisVariationPosition(Number(node.dataset.analysisVariationPly));
     });
   });
   document.querySelector('[data-board-surface="analysisBoard"]')?.addEventListener("click", async (event) => {
@@ -2338,6 +2419,21 @@ function bindAnalysisBoardInteractions() {
     }
   });
   bindEngineCandidateInteractions("analysisBoard", true);
+}
+
+async function selectAnalysisMainPly(ply) {
+  const boardState = state.analysisBoard;
+  if (boardState?.analysisSession) {
+    await loadAnalysisSession(selectAnalysisMainLinePly(boardState.analysisSession, ply));
+    return;
+  }
+  await selectAnalysisPly(ply);
+}
+
+async function selectAnalysisVariationPosition(ply) {
+  const boardState = state.analysisBoard;
+  if (!boardState?.analysisSession || boardState.analysisSession.branchPoint == null) return;
+  await loadAnalysisSession(selectAnalysisVariationPly(boardState.analysisSession, ply));
 }
 
 async function navigateAnalysisBoard(action) {
