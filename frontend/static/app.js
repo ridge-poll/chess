@@ -7,12 +7,14 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=51";
-import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=51";
+} from "./analysis-session.mjs?v=52";
+import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=52";
+import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=52";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
 const engineRefreshTimers = {};
+const progressiveEngines = new ProgressiveEngineRegistry();
 const boardAnimationState = new WeakMap();
 const boardVisualStates = new Map();
 let activeHoldNavigation = null;
@@ -2160,12 +2162,10 @@ function renderEvaluationBar(evaluation = {}) {
   const display = evaluationDisplay(evaluation.cp, evaluation.mate, evaluation.mateWinner);
   return `
     <div class="evaluation-strip">
-      <span>White</span>
       <div class="evaluation-bar" data-analysis-evaluation-bar role="img" aria-label="${escapeHtml(display.label)}" title="${escapeHtml(display.label)}">
         <span class="evaluation-bar-white" data-evaluation-white style="width:${display.whitePercent}%"></span>
         <span class="evaluation-bar-divider" data-evaluation-divider style="left:${display.whitePercent}%"></span>
       </div>
-      <span>Black</span>
     </div>
   `;
 }
@@ -2190,61 +2190,106 @@ function evaluationDisplay(cp, mate, mateWinner = null) {
 
 async function requestPositionEngine(boardId, fen, game = {}, allowPlay = false) {
   if (!fen || !state.enginePanels[boardId]) return;
-  const panel = state.enginePanels[boardId];
-  if (panel.fen === fen && (panel.loading || panel.engine || panel.error)) {
-    updateEnginePanel(boardId, game, allowPlay);
-    return;
-  }
-  const requestId = (panel.requestId || 0) + 1;
-  state.enginePanels[boardId] = { fen, loading: true, engine: null, error: null, requestId };
+  const targetDepth = analysisDepth();
+  const request = progressiveEngines.begin(boardId, { fen, targetDepth, multipv: 2 });
+  state.enginePanels[boardId] = {
+    fen,
+    loading: Number(request.cached?.depth || 0) < targetDepth,
+    engine: request.cached,
+    error: null,
+    requestId: request.id,
+  };
   updateEnginePanel(boardId, game, allowPlay);
   try {
-    const engine = await api("/api/analysis/position", {
+    const response = await fetch("/api/analysis/position/stream", {
       method: "POST",
-      body: JSON.stringify({ fen, depth: analysisDepth(), multipv: 2 }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fen, depth: targetDepth, multipv: 2, request_id: request.id }),
+      signal: request.signal,
     });
-    const current = state.enginePanels[boardId];
-    if (!current || current.requestId !== requestId || current.fen !== fen) return;
-    state.enginePanels[boardId] = { fen, loading: false, engine, error: null, requestId };
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.detail || "Engine request failed");
+    }
+    await consumeNdjson(response, (engine) => {
+      if (engine.status === "error") throw new Error(engine.error || "Engine unavailable");
+      if (!progressiveEngines.accept(boardId, request.id, engine)) return;
+      state.enginePanels[boardId] = {
+        fen,
+        loading: !engine.complete,
+        engine,
+        error: null,
+        requestId: request.id,
+      };
+      updateEnginePanel(boardId, game, allowPlay);
+    });
+    if (!progressiveEngines.isCurrent(boardId, request.id)) return;
+    state.enginePanels[boardId].loading = false;
   } catch (error) {
-    const current = state.enginePanels[boardId];
-    if (!current || current.requestId !== requestId || current.fen !== fen) return;
-    state.enginePanels[boardId] = { fen, loading: false, engine: null, error: error.message, requestId };
+    if (error.name === "AbortError" || !progressiveEngines.isCurrent(boardId, request.id)) return;
+    state.enginePanels[boardId] = {
+      fen,
+      loading: false,
+      engine: state.enginePanels[boardId]?.engine || null,
+      error: error.message,
+      requestId: request.id,
+    };
   }
   updateEnginePanel(boardId, game, allowPlay);
 }
 
 function schedulePositionEngine(boardId, fen, game = {}, allowPlay = false) {
   clearTimeout(engineRefreshTimers[boardId]);
-  const current = state.enginePanels[boardId];
+  progressiveEngines.cancel(boardId);
+  const cached = progressiveEngines.peek(fen, analysisDepth(), 2);
   state.enginePanels[boardId] = {
-    fen: null,
-    loading: true,
-    engine: null,
+    fen,
+    loading: Number(cached?.depth || 0) < analysisDepth(),
+    engine: cached,
     error: null,
-    requestId: Number(current?.requestId || 0) + 1,
+    requestId: null,
   };
   updateEnginePanel(boardId, game, allowPlay);
   engineRefreshTimers[boardId] = setTimeout(() => {
     requestPositionEngine(boardId, fen, game, allowPlay);
-  }, 350);
+  }, rapidNavigationActive ? 220 : 80);
 }
 
 function updateEnginePanel(boardId, game = {}, allowPlay = false) {
   const target = document.querySelector(`[data-engine-panel="${boardId}"]`);
   if (!target) return;
-  target.innerHTML = boardId === "analysisBoard"
-    ? renderAnalysisEnginePanel(boardId, state.enginePanels[boardId], allowPlay)
-    : renderEnginePanel(boardId, state.enginePanels[boardId], game, allowPlay);
-  bindEngineCandidateInteractions(boardId, allowPlay);
+  const panel = state.enginePanels[boardId];
+  const patched = boardId === "analysisBoard" && patchAnalysisEnginePanel(target, panel);
+  if (!patched) {
+    target.innerHTML = boardId === "analysisBoard"
+      ? renderAnalysisEnginePanel(boardId, panel, allowPlay)
+      : renderEnginePanel(boardId, panel, game, allowPlay);
+    bindEngineCandidateInteractions(boardId, allowPlay);
+  }
   if (boardId === "analysisBoard") {
     updateAnalysisEvaluationBar();
     updateAnalysisEngineArrows();
   }
 }
 
+function patchAnalysisEnginePanel(target, panel) {
+  const candidates = (panel?.engine?.candidates || []).slice(0, 2);
+  const rows = [...target.querySelectorAll("[data-engine-rank]")];
+  if (!candidates.length || rows.length !== candidates.length) return false;
+  rows.forEach((row, index) => {
+    const candidate = candidates[index];
+    row.dataset.engineUci = candidate.uci || "";
+    row.querySelector("strong").textContent = formatEngineEval(candidate.score_cp, candidate.mate);
+    row.querySelector("span").textContent = candidate.san || candidate.uci || "-";
+    row.querySelector("small").textContent = (candidate.pv_san || []).slice(1, 6).join(" ");
+  });
+  target.classList.toggle("refining", Boolean(panel.loading));
+  target.dataset.engineDepth = String(panel.engine?.depth || "");
+  return true;
+}
+
 function renderAnalysisEnginePanel(boardId, panel, allowPlay = false) {
-  if (!panel || panel.loading) {
+  if (!panel || (panel.loading && !panel.engine)) {
     return `<div class="analysis-engine-loading" aria-label="Engine thinking"><i></i><i></i></div>`;
   }
   if (panel.error) {
@@ -2253,7 +2298,7 @@ function renderAnalysisEnginePanel(boardId, panel, allowPlay = false) {
   const candidates = (panel.engine?.candidates || []).slice(0, 2);
   if (!candidates.length) return `<div class="analysis-engine-unavailable">No legal engine lines</div>`;
   return candidates.map((candidate) => `
-    <button class="analysis-engine-line" data-engine-candidate="${escapeHtml(boardId)}" data-engine-uci="${escapeHtml(candidate.uci || "")}" ${allowPlay ? "" : "disabled"}>
+    <button class="analysis-engine-line" data-engine-rank="${candidate.rank}" data-engine-candidate="${escapeHtml(boardId)}" data-engine-uci="${escapeHtml(candidate.uci || "")}" ${allowPlay ? "" : "disabled"}>
       <strong>${escapeHtml(formatEngineEval(candidate.score_cp, candidate.mate))}</strong>
       <span>${escapeHtml(candidate.san || candidate.uci || "-")}</span>
       <small>${escapeHtml((candidate.pv_san || []).slice(1, 6).join(" "))}</small>

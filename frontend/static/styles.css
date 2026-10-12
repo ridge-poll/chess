@@ -2572,17 +2572,12 @@ input[type="number"] {
 }
 
 .evaluation-strip {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 7px;
+  display: block;
   align-items: center;
-  width: min(calc(100vw - 16px), 544px);
-  min-height: 25px;
+  width: min(100vw, 560px);
+  min-height: 13px;
+  padding: 3px 0;
   margin: 0 auto;
-  color: var(--muted);
-  font-size: 0.56rem;
-  font-weight: 850;
-  text-transform: uppercase;
 }
 
 .evaluation-bar {
