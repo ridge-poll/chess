@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=43" />
-    <link rel="icon" href="/static/logo.png?v=43" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=43" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=47" />
+    <link rel="icon" href="/static/logo.png?v=47" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=47" />
   </head>
   <body>
     <div id="app">
@@ -167,12 +167,11 @@
 
         <section class="view board-workspace-view" id="openingExplorerView">
           <section class="opening-explorer-shell">
-            <div class="opening-explorer-heading">
-              <button class="workspace-icon-button" id="backFromOpening" aria-label="Back" title="Back">‹</button>
-              <div>
-                <p class="eyebrow">Workspace</p>
-                <h2>Opening Explorer</h2>
-              </div>
+            <div class="analysis-workspace-header opening-workspace-header">
+              <button class="analysis-header-action" id="backFromOpening" aria-label="Back to openings" title="Back">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              </button>
+              <h1>Opening Explorer</h1>
               <span class="pill" id="openingExplorerPly">Start</span>
             </div>
             <div id="openingExplorerMount"></div>
@@ -405,6 +404,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=43" type="module"></script>
+    <script src="/static/app.js?v=47" type="module"></script>
   </body>
 </html>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -39,7 +40,12 @@ async def enqueue_all(depth: Optional[int] = None, profile_id: Optional[int] = N
 @router.post("/position")
 async def position_analysis(payload: PositionAnalysisRequest) -> dict[str, object]:
     try:
-        return analyze_position(payload.fen, payload.depth or settings.default_depth, payload.multipv)
+        return await asyncio.to_thread(
+            analyze_position,
+            payload.fen,
+            payload.depth or settings.default_depth,
+            payload.multipv,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

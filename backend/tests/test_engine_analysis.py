@@ -1,11 +1,14 @@
 from pathlib import Path
 import asyncio
+import threading
+
+import chess
 
 import app.config as config
 import app.db as db
 from app.api.analysis import PositionAnalysisRequest, position_analysis
 from app.models import EngineCandidate, EngineEvaluation, PositionEngineAnalysis
-from app.services.engine_analysis import analyze_position, get_or_create_position_analysis
+from app.services.engine_analysis import analyze_position, get_or_create_position_analysis, opponent_capture_threats
 
 
 class FakeStockfish:
@@ -109,6 +112,7 @@ def test_position_analysis_response_documents_white_perspective(tmp_path: Path, 
     assert response["best_move"] == "e2e4"
     assert len(response["candidates"]) == 2
     assert response["candidates"][0]["pv_san"] == ["e4", "e5"]
+    assert response["threat_captures"] == []
 
 
 def test_position_analysis_api_returns_cached_payload(tmp_path: Path, monkeypatch) -> None:
@@ -122,3 +126,22 @@ def test_position_analysis_api_returns_cached_payload(tmp_path: Path, monkeypatc
 
     assert payload["best_move"] == "e2e4"
     assert [candidate["san"] for candidate in payload["candidates"]] == ["e4", "d4"]
+
+
+def test_position_analysis_runs_engine_work_off_event_loop(monkeypatch) -> None:
+    calling_thread = threading.get_ident()
+
+    def fake_analysis(*_args, **_kwargs):
+        return {"worker_thread": threading.get_ident()}
+
+    monkeypatch.setattr("app.api.analysis.analyze_position", fake_analysis)
+    payload = asyncio.run(position_analysis(PositionAnalysisRequest(fen=chess.STARTING_FEN)))
+
+    assert payload["worker_thread"] != calling_thread
+
+
+def test_opponent_threats_only_include_captures_for_non_moving_side() -> None:
+    fen = "8/8/8/3p4/4N3/8/8/4K2k w - - 0 1"
+
+    assert opponent_capture_threats(fen) == ["d5e4"]
+    assert opponent_capture_threats("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1") == []

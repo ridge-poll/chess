@@ -55,6 +55,7 @@ def serialize_position_analysis(analysis: PositionEngineAnalysis, multipv: int |
         "score_cp": analysis.evaluation.score_cp,
         "mate": analysis.evaluation.mate,
         "evaluation_perspective": "white",
+        "threat_captures": opponent_capture_threats(analysis.evaluation.fen),
         "candidates": [
             {
                 "rank": candidate.rank,
@@ -68,6 +69,29 @@ def serialize_position_analysis(analysis: PositionEngineAnalysis, multipv: int |
             for candidate in candidates
         ],
     }
+
+
+def opponent_capture_threats(fen: str, limit: int = 3) -> list[str]:
+    board = chess.Board(fen)
+    board.turn = not board.turn
+    values = {
+        chess.PAWN: 1,
+        chess.KNIGHT: 3,
+        chess.BISHOP: 3,
+        chess.ROOK: 5,
+        chess.QUEEN: 9,
+        chess.KING: 100,
+    }
+    captures: list[tuple[int, str]] = []
+    for move in board.generate_legal_captures():
+        captured = board.piece_at(move.to_square)
+        attacker = board.piece_at(move.from_square)
+        if captured is None or attacker is None or captured.color == attacker.color:
+            continue
+        priority = values[captured.piece_type] * 10 - values[attacker.piece_type]
+        captures.append((priority, move.uci()))
+    captures.sort(key=lambda item: (-item[0], item[1]))
+    return [uci for _, uci in captures[: max(0, limit)]]
 
 
 def _cached_position_analysis(fen: str, depth: int, multipv: int) -> PositionEngineAnalysis | None:

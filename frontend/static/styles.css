@@ -1912,13 +1912,27 @@ input[type="number"] {
   min-height: 0;
 }
 
+.board-workspace-view #openingExplorerMount {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .board-workspace-view .opening-explorer-shell {
   display: grid;
   grid-template-rows: auto 1fr;
   margin: 0;
-  padding: max(10px, env(safe-area-inset-top)) 0 0;
+  padding: 0;
   border: 0;
   background: transparent;
+}
+
+.opening-workspace-header .pill {
+  justify-self: center;
+  min-width: 42px;
+  padding: 4px 6px;
+  font-size: 0.62rem;
+  text-align: center;
 }
 
 .board-workspace-view .opening-explorer-heading {
@@ -1997,11 +2011,19 @@ input[type="number"] {
   min-height: 0;
 }
 
+.opening-workspace-scroll .analysis-notation {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 62%, transparent);
+}
+
 .analysis-workspace-shell {
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto min(100vw, 560px) auto minmax(0, 1fr) auto;
   overflow: hidden;
   background: var(--bg);
+}
+
+.analysis-workspace-shell.opening-board-workspace {
+  grid-template-rows: min(100vw, 560px) auto minmax(0, 1fr) auto;
 }
 
 .analysis-top-engine {
@@ -2165,7 +2187,7 @@ input[type="number"] {
 
 .analysis-bottom-controls {
   display: grid;
-  grid-template-columns: 52px 52px minmax(8px, 1fr) 68px 68px;
+  grid-template-columns: 62px 62px minmax(8px, 1fr) 68px 68px;
   align-items: center;
   min-height: calc(58px + env(safe-area-inset-bottom));
   padding: 4px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
@@ -2177,7 +2199,7 @@ input[type="number"] {
 .analysis-step-button {
   display: grid;
   place-items: center;
-  min-height: 50px;
+  min-height: 56px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -2185,8 +2207,8 @@ input[type="number"] {
 }
 
 .analysis-control-button svg {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
 }
 
 .analysis-step-button {
@@ -3724,5 +3746,17 @@ input[type="number"] {
   .analysis-settings-modal {
     align-self: center;
     border-radius: 8px;
+  }
+
+  .analysis-workspace-shell {
+    grid-template-rows: auto auto min(62dvh, 560px) auto minmax(0, 1fr) auto;
+  }
+
+  .analysis-workspace-shell.opening-board-workspace {
+    grid-template-rows: min(62dvh, 560px) auto minmax(0, 1fr) auto;
+  }
+
+  .analysis-workspace-shell .chessboard-wrap {
+    width: min(62dvh, 560px);
   }
 }
