@@ -2202,7 +2202,8 @@ input[type="number"] {
 
 .analysis-bottom-controls {
   display: grid;
-  grid-template-columns: 62px 62px minmax(8px, 1fr) 68px 68px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
   align-items: center;
   min-height: calc(58px + env(safe-area-inset-bottom));
   padding: 4px max(8px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(8px, env(safe-area-inset-left));
@@ -2219,6 +2220,15 @@ input[type="number"] {
   border: 0;
   background: transparent;
   color: var(--ink);
+  transition: background-color 90ms ease, opacity 90ms ease;
+  touch-action: manipulation;
+}
+
+.analysis-control-button:active,
+.analysis-step-button:active,
+.analysis-step-button.held,
+[data-rapid-navigation="true"] .analysis-step-button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .analysis-control-button svg {
@@ -2735,6 +2745,13 @@ input[type="number"] {
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.14));
   pointer-events: none;
   user-select: none;
+}
+
+.piece-motion-ghost {
+  position: absolute;
+  z-index: 6;
+  margin: 0;
+  will-change: transform, opacity;
 }
 
 .piece.black-piece {

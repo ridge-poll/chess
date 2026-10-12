@@ -7,11 +7,16 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=50";
+} from "./analysis-session.mjs?v=51";
+import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=51";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
 const engineRefreshTimers = {};
+const boardAnimationState = new WeakMap();
+const boardVisualStates = new Map();
+let activeHoldNavigation = null;
+let rapidNavigationActive = false;
 
 function storedAnalysisSettings() {
   try {
@@ -1720,7 +1725,6 @@ function renderOpeningWorkspaceComponent(config) {
         <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="flip" title="Flip board" aria-label="Flip board">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l-3-3M8 19l3-3M16 19V5l-3 3M16 5l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
         </button>
-        <span></span>
         <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="prev" title="Previous move" aria-label="Previous move">‹</button>
         <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next move" aria-label="Next move">›</button>
       </div>
@@ -1759,7 +1763,6 @@ function renderAnalysisWorkspaceComponent(config) {
         <button class="analysis-control-button" data-board-id="${escapeHtml(config.id)}" data-board-action="flip" title="Flip board" aria-label="Flip board">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5v14l-3-3M8 19l3-3M16 19V5l-3 3M16 5l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
         </button>
-        <span></span>
         <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="prev" title="Previous move" aria-label="Previous move">‹</button>
         <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next move" aria-label="Next move">›</button>
       </div>
@@ -1935,7 +1938,27 @@ function updateBoardComponent(config) {
   const board = document.querySelector(`[data-board-surface="${config.id}"]`);
   if (!board) return;
   const orientation = config.orientation || "white";
+  const previousVisual = boardVisualStates.get(config.id) || {};
+  const previousFen = board.dataset.boardFen || previousVisual.fen || "";
+  const previousOrientation = board.dataset.boardOrientation || previousVisual.orientation || orientation;
+  const previousPieces = new Map(
+    [...board.querySelectorAll("[data-board-square]")].map((square) => [
+      square.dataset.boardSquare,
+      square.querySelector(".piece")?.cloneNode(true) || null,
+    ]),
+  );
+  if (![...previousPieces.values()].some(Boolean) && previousFen) {
+    Object.entries(parseFenPieces(previousFen)).forEach(([square, piece]) => {
+      const template = document.createElement("template");
+      template.innerHTML = renderPieceSvg(piece).trim();
+      previousPieces.set(square, template.content.firstElementChild);
+    });
+  }
+  cancelBoardAnimation(board);
   board.innerHTML = renderBoardSquares(config.fen, orientation, Boolean(config.allowInteraction));
+  board.dataset.boardFen = config.fen || "";
+  board.dataset.boardOrientation = orientation;
+  boardVisualStates.set(config.id, { fen: config.fen || "", orientation });
 
   const ranks = document.querySelector(`[data-board-ranks="${config.id}"]`);
   if (ranks) ranks.innerHTML = renderRankLabels(orientation);
@@ -1949,6 +1972,7 @@ function updateBoardComponent(config) {
     const atStart = currentPly <= 0;
     const atEnd = currentPly >= maxPly;
     button.disabled = (nav === "start" || nav === "prev") ? atStart : atEnd;
+    button.classList.toggle("held", activeHoldNavigation?.action === nav);
   });
   if (config.selectedSquare) {
     const selected = board.querySelector(`[data-board-square="${config.selectedSquare}"]`);
@@ -1971,7 +1995,131 @@ function updateBoardComponent(config) {
   if (config.engineArrows?.length) {
     board.insertAdjacentHTML("beforeend", renderBoardArrows(config.engineArrows, orientation));
   }
+  if (previousFen && previousFen !== config.fen && previousOrientation === orientation) {
+    animateBoardTransition(board, planBoardTransition(previousFen, config.fen), previousPieces);
+  }
 }
+
+function cancelBoardAnimation(board) {
+  const active = boardAnimationState.get(board);
+  if (active) {
+    active.animations.forEach((animation) => animation.cancel());
+    active.hiddenPieces.forEach((piece) => { piece.style.visibility = ""; });
+    active.ghosts.forEach((ghost) => ghost.remove());
+    boardAnimationState.delete(board);
+  }
+}
+
+function animateBoardTransition(board, transition, previousPieces) {
+  if (!transition.moves.length && !transition.appearing.length && !transition.disappearing.length) return;
+  const duration = boardMotionDuration({
+    reduced: window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+    rapid: rapidNavigationActive,
+  });
+  if (!duration) return;
+  const animations = [];
+  const ghosts = [];
+  const hiddenPieces = [];
+  const squareRect = (square) => board.querySelector(`[data-board-square="${square}"]`)?.getBoundingClientRect();
+  const boardRect = board.getBoundingClientRect();
+  const placeGhost = (piece, square) => {
+    const rect = squareRect(square);
+    if (!piece || !rect) return null;
+    const ghost = piece.cloneNode(true);
+    ghost.classList.add("piece-motion-ghost");
+    ghost.style.left = `${rect.left - boardRect.left + rect.width * 0.09}px`;
+    ghost.style.top = `${rect.top - boardRect.top + rect.height * 0.09}px`;
+    ghost.style.width = `${rect.width * 0.82}px`;
+    ghost.style.height = `${rect.height * 0.82}px`;
+    board.appendChild(ghost);
+    ghosts.push(ghost);
+    return { ghost, rect };
+  };
+
+  transition.moves.forEach((move) => {
+    const placed = placeGhost(previousPieces.get(move.from), move.from);
+    const destinationRect = squareRect(move.to);
+    const destinationPiece = board.querySelector(`[data-board-square="${move.to}"] .piece`);
+    if (!placed || !destinationRect || !destinationPiece) return;
+    destinationPiece.style.visibility = "hidden";
+    hiddenPieces.push(destinationPiece);
+    animations.push(placed.ghost.animate([
+      { transform: "translate3d(0, 0, 0)" },
+      { transform: `translate3d(${destinationRect.left - placed.rect.left}px, ${destinationRect.top - placed.rect.top}px, 0)` },
+    ], { duration, easing: "cubic-bezier(.2,.78,.24,1)", fill: "forwards" }));
+  });
+
+  transition.disappearing.forEach((piece) => {
+    const placed = placeGhost(previousPieces.get(piece.square), piece.square);
+    if (!placed) return;
+    animations.push(placed.ghost.animate([
+      { opacity: 1, offset: 0.65 },
+      { opacity: 0 },
+    ], { duration, easing: "ease-out", fill: "forwards" }));
+  });
+
+  transition.appearing.forEach((piece) => {
+    const restored = board.querySelector(`[data-board-square="${piece.square}"] .piece`);
+    if (!restored) return;
+    animations.push(restored.animate([
+      { opacity: 0, offset: 0.55 },
+      { opacity: 1 },
+    ], { duration, easing: "ease-out" }));
+  });
+
+  const active = { animations, ghosts, hiddenPieces };
+  boardAnimationState.set(board, active);
+  Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
+    if (boardAnimationState.get(board) !== active) return;
+    hiddenPieces.forEach((piece) => { piece.style.visibility = ""; });
+    ghosts.forEach((ghost) => ghost.remove());
+    boardAnimationState.delete(board);
+  });
+}
+
+function stopHoldNavigation() {
+  activeHoldNavigation?.controller.stop();
+  activeHoldNavigation = null;
+  rapidNavigationActive = false;
+  document.documentElement.removeAttribute("data-rapid-navigation");
+}
+
+function bindBoardNavigation(buttons, navigate) {
+  buttons.forEach((button) => {
+    const action = button.dataset.boardNav;
+    if (action !== "prev" && action !== "next") {
+      button.addEventListener("click", () => navigate(action));
+      return;
+    }
+    button.addEventListener("pointerdown", (event) => {
+      if (event.button != null && event.button !== 0) return;
+      event.preventDefault();
+      stopHoldNavigation();
+      button.setPointerCapture?.(event.pointerId);
+      button.classList.add("held");
+      const controller = createHoldNavigator(async ({ holding }) => {
+        const currentButton = document.querySelector(
+          `[data-board-id="${button.dataset.boardId}"][data-board-nav="${action}"]`,
+        );
+        if (currentButton?.disabled) {
+          stopHoldNavigation();
+          return;
+        }
+        rapidNavigationActive = holding;
+        if (holding) document.documentElement.dataset.rapidNavigation = "true";
+        await navigate(action);
+      });
+      activeHoldNavigation = { controller, button, action };
+    });
+    button.addEventListener("click", (event) => {
+      if (event.detail === 0) void navigate(action);
+    });
+  });
+}
+
+window.addEventListener("pointerup", stopHoldNavigation);
+window.addEventListener("pointercancel", stopHoldNavigation);
+window.addEventListener("blur", stopHoldNavigation);
 
 function renderBoardArrows(arrows, orientation) {
   const rendered = arrows.map((arrow) => {
@@ -2534,11 +2682,10 @@ function destinationSquare(uci) {
 }
 
 function bindAnalysisBoardInteractions() {
-  document.querySelectorAll('[data-board-id="analysisBoard"][data-board-nav]').forEach((button) => {
-    button.addEventListener("click", async () => {
-      await navigateAnalysisBoard(button.dataset.boardNav);
-    });
-  });
+  bindBoardNavigation(
+    document.querySelectorAll('[data-board-id="analysisBoard"][data-board-nav]'),
+    navigateAnalysisBoard,
+  );
   document.querySelectorAll('[data-board-id="analysisBoard"][data-board-action]').forEach((button) => {
     button.addEventListener("click", async () => {
       if (button.dataset.boardAction === "reset") {
@@ -2856,11 +3003,10 @@ function updateOpeningExplorer() {
 }
 
 function bindOpeningExplorerInteractions() {
-  document.querySelectorAll('[data-board-id="openingExplorer"][data-board-nav]').forEach((button) => {
-    button.addEventListener("click", async () => {
-      await navigateOpeningExplorer(button.dataset.boardNav);
-    });
-  });
+  bindBoardNavigation(
+    document.querySelectorAll('[data-board-id="openingExplorer"][data-board-nav]'),
+    navigateOpeningExplorer,
+  );
   document.querySelectorAll('[data-board-id="openingExplorer"][data-board-action]').forEach((button) => {
     button.addEventListener("click", async () => {
       if (button.dataset.boardAction === "reset") {
