@@ -16,9 +16,14 @@ def import_pgn_text(pgn_text: str, profile_id: int | None = None) -> dict[str, o
     duplicates: list[str] = []
 
     with get_connection() as conn:
+        profile = conn.execute(
+            "SELECT chesscom_username FROM profiles WHERE id = ?",
+            (selected_profile_id,),
+        ).fetchone()
+        profile_username = profile["chesscom_username"] if profile else None
         for game in parsed_games:
             try:
-                game_id = _insert_game(conn, game, selected_profile_id)
+                game_id = _insert_game(conn, game, selected_profile_id, profile_username)
             except sqlite3.IntegrityError:
                 duplicates.append(game.fingerprint)
                 continue
@@ -33,7 +38,18 @@ def import_pgn_text(pgn_text: str, profile_id: int | None = None) -> dict[str, o
     }
 
 
-def _insert_game(conn: sqlite3.Connection, game: ParsedGame, profile_id: int) -> int:
+def _insert_game(
+    conn: sqlite3.Connection,
+    game: ParsedGame,
+    profile_id: int,
+    profile_username: str | None = None,
+) -> int:
+    player_color = game.player_color
+    if not player_color and profile_username:
+        if game.white and game.white.lower() == profile_username.lower():
+            player_color = "white"
+        elif game.black and game.black.lower() == profile_username.lower():
+            player_color = "black"
     cursor = conn.execute(
         """
         INSERT INTO games (
@@ -50,7 +66,7 @@ def _insert_game(conn: sqlite3.Connection, game: ParsedGame, profile_id: int) ->
             game.played_at,
             game.white,
             game.black,
-            game.player_color,
+            player_color,
             game.result,
             game.eco,
             game.opening,

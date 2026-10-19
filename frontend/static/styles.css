@@ -156,6 +156,10 @@ button.danger-button {
   padding: 16px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
 }
 
+.view > :first-child {
+  margin-top: 0;
+}
+
 body.workspace-active #app {
   height: 100dvh;
   padding: 0;
@@ -543,9 +547,27 @@ h2 {
   gap: 8px;
 }
 
-.games-toolbar-actions button {
+.games-toolbar-actions .secondary-button {
   min-width: 86px;
   padding: 0 12px;
+}
+
+.games-refresh-button {
+  width: 44px;
+  min-width: 44px;
+}
+
+.games-refresh-button svg {
+  width: 19px;
+  height: 19px;
+}
+
+.syncing svg {
+  animation: sync-spin 800ms linear infinite;
+}
+
+@keyframes sync-spin {
+  to { transform: rotate(360deg); }
 }
 
 .metrics-grid {
@@ -682,11 +704,13 @@ h2 {
 .import-panel {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .settings-panel {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .settings-actions {
@@ -729,6 +753,9 @@ textarea {
 }
 
 input[type="file"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 44px;
 }
 
@@ -756,6 +783,17 @@ input[type="number"] {
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+#moreView,
+#moreView .panel,
+#moreView label,
+#moreView input,
+#moreView select,
+#moreView textarea,
+#moreView button {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .checkbox-row {
@@ -1590,7 +1628,7 @@ input[type="number"] {
 }
 
 .time-icon,
-.game-row-result {
+.game-row-accuracy {
   color: var(--muted);
   font-weight: 850;
   text-align: right;
@@ -1600,8 +1638,9 @@ input[type="number"] {
   font-size: 0.95rem;
 }
 
-.game-row-result {
+.game-row-accuracy {
   font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .clickable-card {
@@ -3089,24 +3128,65 @@ input[type="number"] {
   background: var(--info-bg);
 }
 
-.swing-list {
+.critical-moment-list {
   display: grid;
-  gap: 6px;
 }
 
-.swing-button {
-  display: flex;
+.critical-moment {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 12px;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 40px;
-  padding: 0 10px;
+  gap: 10px;
+  min-height: 58px;
+  padding: 9px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   text-align: left;
 }
 
-.swing-button.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.critical-moment:first-child {
+  border-top: 0;
+}
+
+.critical-moment:hover,
+.critical-moment:focus-visible,
+.critical-moment.selected {
+  background: var(--hover);
+}
+
+.critical-moment-marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bad);
+}
+
+.critical-moment.positive .critical-moment-marker {
+  background: var(--quality-best);
+}
+
+.critical-moment-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.critical-moment-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.critical-moment-type {
+  color: var(--bad);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.critical-moment.positive .critical-moment-type {
+  color: var(--quality-best);
 }
 
 .quality-grid {
@@ -3620,6 +3700,20 @@ input[type="number"] {
 
   .sync-options {
     grid-template-columns: 1fr;
+  }
+
+  .games-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .games-toolbar-actions {
+    gap: 5px;
+  }
+
+  .games-toolbar-actions .secondary-button {
+    min-width: 0;
+    padding-inline: 9px;
   }
 }
 

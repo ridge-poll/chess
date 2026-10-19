@@ -12,23 +12,51 @@ from app.services.profiles import resolve_profile_id
 def list_games(profile_id: int | None = None) -> list[dict[str, object]]:
     selected_profile_id = resolve_profile_id(profile_id)
     with get_connection() as conn:
-        return conn.execute(
+        rows = conn.execute(
             """
             SELECT
                 g.*,
+                COALESCE(
+                    g.player_color,
+                    CASE
+                        WHEN LOWER(g.white) = LOWER(p.chesscom_username) THEN 'white'
+                        WHEN LOWER(g.black) = LOWER(p.chesscom_username) THEN 'black'
+                    END
+                ) AS effective_player_color,
                 COALESCE(MAX(j.status), 'not_analyzed') AS analysis_status,
                 COALESCE(MAX(j.analyzed_plies), 0) AS analyzed_plies,
                 COALESCE(MAX(j.total_plies), g.ply_count) AS total_plies,
-                ROUND(AVG(ma.centipawn_loss), 1) AS acpl
+                ROUND(AVG(CASE
+                    WHEN m.color = COALESCE(
+                        g.player_color,
+                        CASE
+                            WHEN LOWER(g.white) = LOWER(p.chesscom_username) THEN 'white'
+                            WHEN LOWER(g.black) = LOWER(p.chesscom_username) THEN 'black'
+                        END
+                    ) THEN ma.centipawn_loss
+                END), 1) AS acpl
             FROM games g
+            JOIN profiles p ON p.id = g.profile_id
             LEFT JOIN analysis_jobs j ON j.game_id = g.id
-            LEFT JOIN move_analyses ma ON ma.game_id = g.id
+            LEFT JOIN moves m ON m.game_id = g.id
+            LEFT JOIN move_analyses ma
+                ON ma.game_id = m.game_id
+                AND ma.ply = m.ply
+                AND ma.depth = (SELECT MAX(depth) FROM move_analyses WHERE game_id = g.id)
             WHERE g.profile_id = ?
             GROUP BY g.id
             ORDER BY g.played_at DESC, g.id DESC
             """,
             (selected_profile_id,),
         ).fetchall()
+    return [
+        {
+            **row,
+            "player_color": row["effective_player_color"],
+            "accuracy": accuracy_from_acpl(float(row["acpl"])) if row["acpl"] is not None else None,
+        }
+        for row in rows
+    ]
 
 
 def get_game_detail(game_id: int, profile_id: int | None = None) -> dict[str, object] | None:
@@ -46,6 +74,7 @@ def get_game_detail(game_id: int, profile_id: int | None = None) -> dict[str, ob
         "volatility": positions["volatility"],
         "openness": positions["openness"],
         "phase_performance": positions["phase_performance"],
+        "critical_moments": positions["critical_moments"],
         "starting_fen": positions["starting_fen"],
     }
 

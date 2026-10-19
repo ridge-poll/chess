@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import chess
 
+from app.analysis.critical_moments import critical_moments
 from app.analysis.metrics import MOVE_CLASSIFICATIONS, accuracy_from_acpl, score_to_cp
 from app.analysis.position_features import openness_features
 from app.db import get_connection
@@ -24,6 +25,17 @@ def get_game_positions(
         ).fetchone()
         if not game:
             return None
+        game = dict(game)
+        if not game.get("player_color"):
+            profile = conn.execute(
+                "SELECT chesscom_username FROM profiles WHERE id = ?",
+                (selected_profile_id,),
+            ).fetchone()
+            username = profile["chesscom_username"] if profile else None
+            if username and game.get("white") and str(game["white"]).lower() == str(username).lower():
+                game["player_color"] = "white"
+            elif username and game.get("black") and str(game["black"]).lower() == str(username).lower():
+                game["player_color"] = "black"
 
         selected_depth = depth
         if selected_depth is None:
@@ -77,11 +89,27 @@ def get_game_positions(
             """,
             params,
         ).fetchall()
+        candidate_rows = []
+        if selected_depth is not None:
+            candidate_rows = conn.execute(
+                """
+                SELECT DISTINCT pe.fen, pec.rank, pec.score_cp, pec.mate
+                FROM position_evaluations pe
+                JOIN position_evaluation_candidates pec ON pec.evaluation_id = pe.id
+                JOIN moves m ON m.fen_before = pe.fen
+                WHERE m.game_id = ? AND pe.depth = ?
+                ORDER BY pe.fen, pec.rank
+                """,
+                (game_id, selected_depth),
+            ).fetchall()
 
     positions = [_serialize_position(row) for row in rows]
     time_usage = _time_usage(positions, game["time_control"])
     volatility = _volatility(positions)
     openness = _openness_trajectory(positions)
+    candidates_by_fen: dict[str, list[dict[str, object]]] = {}
+    for candidate in candidate_rows:
+        candidates_by_fen.setdefault(str(candidate["fen"]), []).append(candidate)
     return {
         "profile_id": selected_profile_id,
         "game": game,
@@ -95,6 +123,7 @@ def get_game_positions(
         "volatility": volatility,
         "openness": openness,
         "phase_performance": _phase_performance(positions),
+        "critical_moments": critical_moments(positions, game["player_color"], candidates_by_fen),
     }
 
 

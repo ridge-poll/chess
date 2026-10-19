@@ -5,6 +5,7 @@ import chess
 import app.config as config
 import app.db as db
 from app.services.imports import import_pgn_text
+from app.services.games import list_games
 from app.services.position_analysis import get_game_positions
 from app.services.profiles import create_profile
 
@@ -76,6 +77,7 @@ def test_positions_preserve_move_and_evaluation_order(tmp_path: Path, monkeypatc
     assert result["positions"][0]["openness"]["score"] == result["openness"][0]["score"]
     assert result["phase_performance"]["white"][0]["acpl"] == 2.5
     assert result["phase_performance"]["black"][0]["mistakes"] == 1
+    assert "critical_moments" in result
 
 
 def test_positions_handle_missing_analysis_and_clock_data(tmp_path: Path, monkeypatch) -> None:
@@ -121,3 +123,45 @@ def test_position_analysis_is_profile_scoped(tmp_path: Path, monkeypatch) -> Non
 
     assert profile_b_result is not None
     assert sum(profile_b_result["quality_counts"]["white"].values()) == 0
+
+
+def test_games_list_accuracy_uses_only_the_profile_players_moves(tmp_path: Path, monkeypatch) -> None:
+    database_path = _setup_db(tmp_path, monkeypatch)
+    game_id = import_pgn_text(SAMPLE_PGN)["imported_game_ids"][0]
+    _insert_analysis(database_path, game_id)
+    with db.get_connection(database_path) as conn:
+        conn.execute("UPDATE games SET player_color = 'white' WHERE id = ?", (game_id,))
+
+    game = next(row for row in list_games() if row["id"] == game_id)
+
+    assert game["acpl"] == 2.5
+    assert game["accuracy"] == 99.2
+
+
+def test_games_list_leaves_unanalyzed_accuracy_empty(tmp_path: Path, monkeypatch) -> None:
+    _setup_db(tmp_path, monkeypatch)
+    game_id = import_pgn_text(SAMPLE_PGN)["imported_game_ids"][0]
+    with db.get_connection() as conn:
+        conn.execute("UPDATE games SET player_color = 'white' WHERE id = ?", (game_id,))
+
+    game = next(row for row in list_games() if row["id"] == game_id)
+
+    assert game["acpl"] is None
+    assert game["accuracy"] is None
+
+
+def test_legacy_game_infers_player_color_from_profile_username(tmp_path: Path, monkeypatch) -> None:
+    database_path = _setup_db(tmp_path, monkeypatch)
+    game_id = import_pgn_text(SAMPLE_PGN)["imported_game_ids"][0]
+    _insert_analysis(database_path, game_id)
+    with db.get_connection(database_path) as conn:
+        conn.execute("UPDATE profiles SET chesscom_username = 'alice' WHERE id = 1")
+        conn.execute("UPDATE games SET player_color = NULL WHERE id = ?", (game_id,))
+
+    game = next(row for row in list_games() if row["id"] == game_id)
+    detail = get_game_positions(game_id)
+
+    assert game["player_color"] == "white"
+    assert game["accuracy"] == 99.2
+    assert detail is not None
+    assert detail["game"]["player_color"] == "white"

@@ -7,9 +7,9 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=52";
-import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=52";
-import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=52";
+} from "./analysis-session.mjs?v=53";
+import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=53";
+import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=53";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
@@ -86,8 +86,8 @@ const state = {
 
 const els = {
   status: document.querySelector("#status"),
-  pageTitle: document.querySelector("#pageTitle"),
   refreshButton: document.querySelector("#refreshButton"),
+  gamesRefreshButton: document.querySelector("#gamesRefreshButton"),
   themeToggleButton: document.querySelector("#themeToggleButton"),
   profileSelect: document.querySelector("#profileSelect"),
   createProfileButton: document.querySelector("#createProfileButton"),
@@ -216,7 +216,6 @@ function setView(view) {
   els.navButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === primaryView);
   });
-  if (els.pageTitle) els.pageTitle.textContent = pageTitleFor(view);
   if (view === "openings") renderRepertoireEntry();
 }
 
@@ -228,20 +227,6 @@ function primaryViewFor(view) {
   if (view === "detail" || view === "analysis") return "games";
   if (view === "openingExplorer" || view === "repertoireMap") return "openings";
   return view;
-}
-
-function pageTitleFor(view) {
-  return {
-    home: "Home",
-    openings: "Openings",
-    repertoireMap: "Repertoire Map",
-    openingExplorer: "Opening Explorer",
-    games: "Games",
-    insights: "Insights",
-    more: "More",
-    detail: "Game",
-    analysis: "Analysis",
-  }[view] || "Home";
 }
 
 async function loadAll() {
@@ -1176,20 +1161,20 @@ function renderGames() {
         <div class="game-row-meta">${escapeHtml(game.opening || game.eco || "Unknown opening")} · ${escapeHtml(shortDate(game.played_at))}</div>
       </div>
       <span class="time-icon" title="${escapeHtml(game.time_class || "Unknown")}">${timeControlIcon(game.time_class)}</span>
-      <span class="game-row-result">${escapeHtml(displayResult(game.result))}</span>
+      <span class="game-row-accuracy">${game.accuracy == null ? "—" : `${Number(game.accuracy).toFixed(1)}%`}</span>
     </article>
   `).join("");
 }
 
 function sortGames(games) {
   const sorted = [...games];
-  const acpl = (game) => game.acpl == null ? Number.POSITIVE_INFINITY : Number(game.acpl);
+  const accuracy = (game) => game.accuracy == null ? Number.NEGATIVE_INFINITY : Number(game.accuracy);
   const plies = (game) => Number(game.ply_count || 0);
   const date = (game) => String(game.played_at || "");
   if (state.sortBy === "accuracy_desc") {
-    sorted.sort((a, b) => acpl(a) - acpl(b));
+    sorted.sort((a, b) => accuracy(b) - accuracy(a));
   } else if (state.sortBy === "accuracy_asc") {
-    sorted.sort((a, b) => acpl(b) - acpl(a));
+    sorted.sort((a, b) => accuracy(a) - accuracy(b));
   } else if (state.sortBy === "longest") {
     sorted.sort((a, b) => plies(b) - plies(a));
   } else if (state.sortBy === "shortest") {
@@ -1345,6 +1330,13 @@ async function renderGameDetail(gameId) {
     </section>
     <section class="diagnostic-section analysis-panel">
       <div class="panel-heading">
+        <h2>Critical Moments</h2>
+        <span class="diagnostic-caption">Worth reviewing</span>
+      </div>
+      ${renderCriticalMoments(detail.critical_moments || [])}
+    </section>
+    <section class="diagnostic-section analysis-panel">
+      <div class="panel-heading">
         <h2>Move Quality</h2>
       </div>
       ${renderQualityCounts(detail.quality_counts || {}, game)}
@@ -1473,8 +1465,6 @@ function renderEvaluationGraph(history, summary, game = {}) {
   const equalityY = yFor(0).toFixed(1);
   const areaPath = `${path} L ${xFor(points.length - 1).toFixed(1)} ${equalityY} L ${xFor(0).toFixed(1)} ${equalityY} Z`;
   const last = points[points.length - 1];
-  const swings = summary.largest_swings || [];
-
   return `
     <div class="eval-graph-wrap">
       <svg class="eval-graph" viewBox="0 0 ${width} ${height}" role="img" aria-label="Engine evaluation graph">
@@ -1501,20 +1491,25 @@ function renderEvaluationGraph(history, summary, game = {}) {
         <strong>${playerAdvantageLabel(last.eval_cp, last.mate, game)}</strong>
         <span>Opponent +</span>
       </div>
-      <div class="eval-selected" id="evalSelected"></div>
-      ${swings.length ? `
-        <div class="swing-list">
-          <div class="mini-heading">Largest Swings</div>
-          ${swings.map((swing) => `
-            <button class="swing-button" data-select-ply="${swing.ply}">
-              <span>${escapeHtml(moveLabel(swing))}</span>
-              <strong>${formatSignedCp(swing.delta_cp)}</strong>
-            </button>
-          `).join("")}
-        </div>
-      ` : ""}
     </div>
   `;
+}
+
+function renderCriticalMoments(moments) {
+  if (!moments.length) {
+    return `<div class="stat-subtitle">Critical decisions will appear as analysis completes.</div>`;
+  }
+  return `<div class="critical-moment-list">${moments.map((moment) => `
+    <button class="critical-moment ${moment.polarity === "positive" ? "positive" : "negative"}" data-diagnostic-ply="${moment.ply}">
+      <span class="critical-moment-marker" aria-hidden="true"></span>
+      <span class="critical-moment-copy">
+        <strong>${escapeHtml(moveLabel(moment))}</strong>
+        <small>${escapeHtml(moment.explanation || "Review this decision")}</small>
+      </span>
+      <span class="critical-moment-type">${escapeHtml(moment.criticality_type || "Critical")}</span>
+      <span class="row-arrow" aria-hidden="true">›</span>
+    </button>
+  `).join("")}</div>`;
 }
 
 function renderBoardExplorer(moves, startingFen) {
@@ -1566,27 +1561,6 @@ function updateSelectedPly() {
   });
   updateEvaluationCursor();
   updateExplorerBoard(selected);
-  const panel = document.querySelector("#evalSelected");
-  if (!panel) return;
-  if (!selected) {
-    panel.innerHTML = `
-      <div>
-        <div class="stat-title">Starting position</div>
-        <div class="stat-subtitle">No move selected yet.</div>
-      </div>
-      <span class="pill">Start</span>
-      <strong>-</strong>
-    `;
-    return;
-  }
-  panel.innerHTML = `
-    <div>
-      <div class="stat-title">${escapeHtml(moveLabel(selected))}</div>
-      <div class="stat-subtitle">Best ${escapeHtml(selected.best_uci || "-")} · CPL ${selected.centipawn_loss == null ? "-" : selected.centipawn_loss}</div>
-    </div>
-    ${normalizedClassification(selected.classification) ? `<span class="pill ${classificationClass(selected.classification)}">${classificationLabel(selected.classification)}</span>` : ""}
-    <strong>${playerAdvantageLabel(selected.eval_after_cp ?? selected.eval_after_display_cp, selected.mate_after, state.selectedGame || {})}</strong>
-  `;
 }
 
 function updateEvaluationCursor() {
@@ -3434,20 +3408,36 @@ async function syncChessCom(options = {}) {
     return;
   }
   const days = Math.max(1, Math.min(365, Number(els.syncLimit.value) || state.activeProfile?.chesscom_sync_days || 7));
-  showStatus(options.auto ? `Refreshing and syncing ${username}.` : `Syncing the last ${days} days from Chess.com.`, 0);
-  const result = await api("/api/chesscom/sync", {
-    method: "POST",
-    body: JSON.stringify({
-      username,
-      days,
-      force: els.syncForce.checked,
-      profile_id: Number(state.activeProfile.id),
-    }),
+  setSyncingState(true);
+  try {
+    showStatus(options.auto ? `Refreshing and syncing ${username}.` : `Syncing the last ${days} days from Chess.com.`, 0);
+    const result = await api("/api/chesscom/sync", {
+      method: "POST",
+      body: JSON.stringify({
+        username,
+        days,
+        force: els.syncForce.checked,
+        profile_id: Number(state.activeProfile.id),
+      }),
+    });
+    await rememberSyncPreferences(username, days);
+    showStatus(`Synced ${result.archives} archives: ${result.imported} new, ${result.duplicates} duplicates.`);
+    await loadAll();
+    if (!options.auto) setView("games");
+  } catch (error) {
+    showStatus(`Sync failed: ${error.message}`, 8000);
+    throw error;
+  } finally {
+    setSyncingState(false);
+  }
+}
+
+function setSyncingState(syncing) {
+  [els.refreshButton, els.gamesRefreshButton, els.syncButton].filter(Boolean).forEach((button) => {
+    button.disabled = syncing;
+    button.classList.toggle("syncing", syncing);
+    button.setAttribute("aria-busy", String(syncing));
   });
-  await rememberSyncPreferences(username, days);
-  showStatus(`Synced ${result.archives} archives: ${result.imported} new, ${result.duplicates} duplicates.`);
-  await loadAll();
-  if (!options.auto) setView("games");
 }
 
 async function rememberSyncPreferences(username, days) {
@@ -3689,13 +3679,32 @@ els.mapColorButtons.forEach((button) => {
 });
 
 els.refreshButton.addEventListener("click", async () => {
-  const username = (els.chesscomUsername.value || state.activeProfile?.chesscom_username || "").trim();
-  if (username) {
-    await syncChessCom({ username, auto: true });
+  try {
+    const username = (els.chesscomUsername.value || state.activeProfile?.chesscom_username || "").trim();
+    if (username) {
+      await syncChessCom({ username, auto: true });
+      return;
+    }
+    await loadAll();
+    showStatus("Refreshed.");
+  } catch (_error) {
+    // syncChessCom owns the user-facing failure state.
+  }
+});
+
+els.gamesRefreshButton.addEventListener("click", async () => {
+  const username = state.activeProfile?.chesscom_username || els.chesscomUsername.value.trim();
+  if (!username) {
+    showStatus("Add the profile's Chess.com username in More before refreshing.", 6000);
+    setView("more");
     return;
   }
-  await loadAll();
-  showStatus("Refreshed.");
+  try {
+    await syncChessCom({ username, auto: true });
+    setView("games");
+  } catch (_error) {
+    // syncChessCom owns the user-facing failure state.
+  }
 });
 
 els.themeToggleButton.addEventListener("click", () => {

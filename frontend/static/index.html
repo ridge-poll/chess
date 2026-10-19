@@ -12,20 +12,12 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=52" />
-    <link rel="icon" href="/static/logo.png?v=52" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=52" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=53" />
+    <link rel="icon" href="/static/logo.png?v=53" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=53" />
   </head>
   <body>
     <div id="app">
-      <header class="topbar">
-        <img class="app-logo" src="/static/logo.png?v=29" alt="" aria-hidden="true" />
-        <div>
-          <p class="eyebrow">Chess Analytics</p>
-          <h1 id="pageTitle">Home</h1>
-        </div>
-      </header>
-
       <main>
         <section id="status" class="status" hidden></section>
 
@@ -185,6 +177,11 @@
               <strong id="gameCountLabel">0 games</strong>
             </div>
             <div class="games-toolbar-actions">
+              <button id="gamesRefreshButton" class="icon-button games-refresh-button" aria-label="Refresh games" title="Refresh games">
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M20 6v5h-5M4 18v-5h5M18.3 9A7 7 0 0 0 6.6 6.4L4 9M5.7 15A7 7 0 0 0 17.4 17.6L20 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </button>
               <button id="filterToggleButton" class="secondary-button">Filter</button>
               <button id="newAnalysisButton" class="secondary-button">Analysis</button>
             </div>
@@ -404,6 +401,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=52" type="module"></script>
+    <script src="/static/app.js?v=53" type="module"></script>
   </body>
 </html>
