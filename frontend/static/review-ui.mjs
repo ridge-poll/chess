@@ -22,3 +22,10 @@ export function adjacentCriticalPly(moments, currentPly, direction) {
   if (direction === "prev") return [...plies].reverse().find((ply) => ply < current) ?? plies.at(-1);
   return plies.find((ply) => ply > current) ?? plies[0];
 }
+
+export function resolveActiveProfile(profiles, activeProfile, storedId) {
+  if (!Array.isArray(profiles)) return null;
+  const stored = profiles.find((profile) => String(profile.id) === String(storedId));
+  const active = profiles.find((profile) => String(profile.id) === String(activeProfile?.id));
+  return stored || active || profiles[0] || null;
+}

@@ -7,10 +7,10 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=54";
-import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=54";
-import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=54";
-import { adjacentCriticalPly, lastMoveSquares, QUALITY_SYMBOLS } from "./review-ui.mjs?v=54";
+} from "./analysis-session.mjs?v=55";
+import { boardMotionDuration, createHoldNavigator, parseFenPieces, pieceMotionGeometry, planBoardTransition } from "./board-motion.mjs?v=55";
+import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=55";
+import { adjacentCriticalPly, lastMoveSquares, QUALITY_SYMBOLS, resolveActiveProfile } from "./review-ui.mjs?v=55";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
@@ -20,6 +20,7 @@ const boardAnimationState = new WeakMap();
 const boardVisualStates = new Map();
 let activeHoldNavigation = null;
 let rapidNavigationActive = false;
+let syncInFlight = false;
 
 function storedAnalysisSettings() {
   try {
@@ -41,6 +42,7 @@ const state = {
   queue: null,
   profiles: [],
   activeProfile: null,
+  profileStatus: "idle",
   activeView: "home",
   search: "",
   sortBy: "recent",
@@ -196,8 +198,11 @@ function primaryViewFor(view) {
   return view;
 }
 
+let profileInitialization = null;
+
 async function loadAll() {
-  await loadProfiles();
+  await ensureActiveProfile();
+  renderProfiles();
   const profileQuery = profileParam();
   const [dashboard, games, queueStatus, syncs] = await Promise.all([
     api(`/api/dashboard${profileQuery}`),
@@ -211,29 +216,62 @@ async function loadAll() {
   state.jobs = queueStatus.jobs || [];
   state.syncs = syncs || [];
   renderDashboard();
-  renderProfiles();
   renderGames();
   renderJobs();
   renderSyncHistory();
   updatePolling();
 }
 
-async function loadProfiles() {
-  const [profiles, active] = await Promise.all([
-    api("/api/profiles"),
-    api("/api/profiles/active"),
-  ]);
-  state.profiles = profiles || [];
-  const storedId = localStorage.getItem("activeProfileId");
-  const storedProfile = state.profiles.find((profile) => String(profile.id) === storedId);
-  state.activeProfile = storedProfile || active;
-  if (storedProfile && String(active.id) !== String(storedProfile.id)) {
-    await api("/api/profiles/active", {
-      method: "PUT",
-      body: JSON.stringify({ profile_id: Number(storedProfile.id) }),
-    });
+async function ensureActiveProfile() {
+  if (state.profileStatus === "ready" && state.activeProfile?.id) return state.activeProfile;
+  if (profileInitialization) return profileInitialization;
+  state.profileStatus = "loading";
+  setProfileControlsEnabled(false);
+  profileInitialization = (async () => {
+    try {
+      let profiles = await api("/api/profiles");
+      let active = await api("/api/profiles/active");
+      if (!Array.isArray(profiles)) throw new Error("Profile list was invalid.");
+      if (!profiles.length && active?.id) profiles = [active];
+      const storedId = localStorage.getItem("activeProfileId");
+      const selected = resolveActiveProfile(profiles, active, storedId);
+      if (!selected?.id) throw new Error("No active profile is available.");
+      if (String(active?.id) !== String(selected.id)) {
+        active = await api("/api/profiles/active", {
+          method: "PUT",
+          body: JSON.stringify({ profile_id: Number(selected.id) }),
+        });
+      } else {
+        active = selected;
+      }
+      state.profiles = profiles;
+      state.activeProfile = active;
+      state.profileStatus = "ready";
+      localStorage.setItem("activeProfileId", String(active.id));
+      return active;
+    } catch (error) {
+      state.profileStatus = "error";
+      state.activeProfile = null;
+      throw error;
+    } finally {
+      profileInitialization = null;
+      setProfileControlsEnabled(true);
+    }
+  })();
+  return profileInitialization;
+}
+
+function setProfileControlsEnabled(enabled) {
+  [els.refreshButton, els.gamesRefreshButton, els.syncButton, els.importButton, els.profileSelect]
+    .filter(Boolean)
+    .forEach((control) => { control.disabled = !enabled; });
+}
+
+function requireActiveProfile() {
+  if (state.profileStatus !== "ready" || !state.activeProfile?.id) {
+    throw new Error("Profiles are still loading. Please try again in a moment.");
   }
-  localStorage.setItem("activeProfileId", String(state.activeProfile.id));
+  return state.activeProfile;
 }
 
 function renderProfiles() {
@@ -248,11 +286,13 @@ function renderProfiles() {
 }
 
 function profileParam() {
-  return state.activeProfile ? `?profile_id=${encodeURIComponent(state.activeProfile.id)}` : "";
+  const profile = requireActiveProfile();
+  return `?profile_id=${encodeURIComponent(profile.id)}`;
 }
 
 function profileAmpParam() {
-  return state.activeProfile ? `&profile_id=${encodeURIComponent(state.activeProfile.id)}` : "";
+  const profile = requireActiveProfile();
+  return `&profile_id=${encodeURIComponent(profile.id)}`;
 }
 
 function renderDashboard() {
@@ -1272,19 +1312,30 @@ function renderBoardFirstComponent(config) {
 }
 
 function renderOpeningContinuationPanel(explorer) {
-  const moves = (explorer.legal_moves || []).slice(0, 8);
+  const master = state.masterExplorer;
+  const matchesPosition = master.fen === explorer.fen;
+  const databaseMoves = matchesPosition ? master.data?.moves || [] : [];
+  const fallbackMoves = (explorer.legal_moves || []).slice(0, 8);
+  const moves = databaseMoves.length ? databaseMoves : fallbackMoves;
   return `
     <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
-      <div class="continuation-header"><span>Move</span><span></span><span>Play</span></div>
+      <div class="continuation-header"><span>Move</span><span>Games</span><span>Results</span></div>
       <div class="continuation-list">
-        ${moves.map((move) => `
-          <button class="continuation-row" data-opening-continuation="${escapeHtml(move.uci)}">
-            <strong>${escapeHtml(move.san || move.uci)}</strong>
-            <span></span>
-            <span class="continuation-local-label">Play</span>
-          </button>
-        `).join("")}
+        ${matchesPosition && master.loading && !master.data
+          ? Array.from({ length: 5 }, () => '<div class="continuation-skeleton"><i></i><i></i><i></i></div>').join("")
+          : moves.map((move) => {
+            const hasResults = Number(move.games) > 0;
+            const lowSample = hasResults && Number(move.games) < 100;
+            return `
+              <button class="continuation-row" data-opening-continuation="${escapeHtml(move.uci)}">
+                <strong>${escapeHtml(move.san || move.uci)}</strong>
+                <span>${hasResults ? formatCompactCount(move.games) : "—"}</span>
+                ${hasResults ? `<span class="${lowSample ? "low-sample" : ""}" title="${lowSample ? "Small sample" : "Master game results"}">${renderExplorerWdb(move)}</span>` : '<span class="continuation-no-results">—</span>'}
+              </button>
+            `;
+          }).join("")}
       </div>
+      ${matchesPosition && master.error ? `<div class="continuation-notice"><span>Database results unavailable.</span><button data-master-retry>Retry</button></div>` : ""}
     </div>
   `;
 }
@@ -1438,30 +1489,40 @@ function animateBoardTransition(board, transition, previousPieces) {
   const hiddenPieces = [];
   const squareRect = (square) => board.querySelector(`[data-board-square="${square}"]`)?.getBoundingClientRect();
   const boardRect = board.getBoundingClientRect();
-  const placeGhost = (piece, square) => {
+  const placeGhost = (piece, square, destinationPieceRect = null, destinationSquareRect = null) => {
     const rect = squareRect(square);
-    if (!piece || !rect) return null;
+    const targetSquare = destinationSquareRect || rect;
+    if (!piece || !rect || !targetSquare) return null;
+    const targetPiece = destinationPieceRect || {
+      left: targetSquare.left + targetSquare.width * 0.09,
+      top: targetSquare.top + targetSquare.height * 0.09,
+      width: targetSquare.width * 0.82,
+      height: targetSquare.height * 0.82,
+    };
+    const geometry = pieceMotionGeometry(rect, targetSquare, targetPiece);
+    if (!geometry) return null;
     const ghost = piece.cloneNode(true);
     ghost.classList.add("piece-motion-ghost");
-    ghost.style.left = `${rect.left - boardRect.left + rect.width * 0.09}px`;
-    ghost.style.top = `${rect.top - boardRect.top + rect.height * 0.09}px`;
-    ghost.style.width = `${rect.width * 0.82}px`;
-    ghost.style.height = `${rect.height * 0.82}px`;
+    ghost.style.left = `${geometry.left - boardRect.left}px`;
+    ghost.style.top = `${geometry.top - boardRect.top}px`;
+    ghost.style.width = `${geometry.width}px`;
+    ghost.style.height = `${geometry.height}px`;
     board.appendChild(ghost);
     ghosts.push(ghost);
-    return { ghost, rect };
+    return { ghost, geometry };
   };
 
   transition.moves.forEach((move) => {
-    const placed = placeGhost(previousPieces.get(move.from), move.from);
     const destinationRect = squareRect(move.to);
     const destinationPiece = board.querySelector(`[data-board-square="${move.to}"] .piece`);
-    if (!placed || !destinationRect || !destinationPiece) return;
+    const destinationPieceRect = destinationPiece?.getBoundingClientRect();
+    const placed = placeGhost(previousPieces.get(move.from), move.from, destinationPieceRect, destinationRect);
+    if (!placed || !destinationRect || !destinationPiece || !destinationPieceRect) return;
     destinationPiece.style.visibility = "hidden";
     hiddenPieces.push(destinationPiece);
     animations.push(placed.ghost.animate([
       { transform: "translate3d(0, 0, 0)" },
-      { transform: `translate3d(${destinationRect.left - placed.rect.left}px, ${destinationRect.top - placed.rect.top}px, 0)` },
+      { transform: `translate3d(${placed.geometry.translateX}px, ${placed.geometry.translateY}px, 0)` },
     ], { duration, easing: "cubic-bezier(.2,.78,.24,1)", fill: "forwards" }));
   });
 
@@ -2475,6 +2536,7 @@ function renderOpeningExplorer() {
   });
   updateOpeningExplorer();
   bindOpeningExplorerInteractions();
+  void requestMasterExplorer();
 }
 
 function updateOpeningExplorer() {
@@ -2840,6 +2902,7 @@ function confirmDelete(gameId) {
 }
 
 async function importGames() {
+  const profile = await ensureActiveProfile();
   const files = Array.from(els.fileInput.files || []);
   let imported = 0;
   let duplicates = 0;
@@ -2859,7 +2922,7 @@ async function importGames() {
   if (els.pgnInput.value.trim()) {
     const result = await api("/api/imports/pgn", {
       method: "POST",
-      body: JSON.stringify({ pgn: els.pgnInput.value, profile_id: Number(state.activeProfile.id) }),
+      body: JSON.stringify({ pgn: els.pgnInput.value, profile_id: Number(profile.id) }),
     });
     imported += result.imported || 0;
     duplicates += result.duplicates || 0;
@@ -2879,14 +2942,17 @@ async function importGames() {
 }
 
 async function syncChessCom(options = {}) {
-  const username = String(options.username || els.chesscomUsername.value || "").trim();
-  if (!username) {
-    showStatus("Enter a Chess.com username.");
-    return;
-  }
-  const days = Math.max(1, Math.min(365, Number(els.syncLimit.value) || state.activeProfile?.chesscom_sync_days || 7));
+  if (syncInFlight) return;
+  syncInFlight = true;
   setSyncingState(true);
   try {
+    const profile = await ensureActiveProfile();
+    const username = String(options.username || els.chesscomUsername.value || profile.chesscom_username || "").trim();
+    if (!username) {
+      showStatus("Enter a Chess.com username.");
+      return;
+    }
+    const days = Math.max(1, Math.min(365, Number(els.syncLimit.value) || profile.chesscom_sync_days || 7));
     showStatus(options.auto ? `Refreshing and syncing ${username}.` : `Syncing the last ${days} days from Chess.com.`, 0);
     const result = await api("/api/chesscom/sync", {
       method: "POST",
@@ -2894,7 +2960,7 @@ async function syncChessCom(options = {}) {
         username,
         days,
         force: options.force === true || (!options.auto && els.syncForce.checked),
-        profile_id: Number(state.activeProfile.id),
+        profile_id: Number(profile.id),
       }),
     });
     await rememberSyncPreferences(username, days);
@@ -2905,6 +2971,7 @@ async function syncChessCom(options = {}) {
     showStatus(`Sync failed: ${error.message}`, 8000);
     throw error;
   } finally {
+    syncInFlight = false;
     setSyncingState(false);
   }
 }
@@ -2918,8 +2985,8 @@ function setSyncingState(syncing) {
 }
 
 async function rememberSyncPreferences(username, days) {
-  if (!state.activeProfile?.id) return;
-  const profile = await api(`/api/profiles/${state.activeProfile.id}/sync-preferences`, {
+  const activeProfile = await ensureActiveProfile();
+  const profile = await api(`/api/profiles/${activeProfile.id}/sync-preferences`, {
     method: "PUT",
     body: JSON.stringify({
       chesscom_username: username,
@@ -3458,5 +3525,4 @@ function timeRank(timeClass) {
 }
 
 updateThemeButton();
-bindRepertoireMapGestures();
 loadAll().catch((error) => showStatus(error.message, 8000));

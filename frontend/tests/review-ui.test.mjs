@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { adjacentCriticalPly, lastMoveSquares, QUALITY_SYMBOLS } from "../static/review-ui.mjs";
+import { adjacentCriticalPly, lastMoveSquares, QUALITY_SYMBOLS, resolveActiveProfile } from "../static/review-ui.mjs";
 
 const moves = [
   { ply: 1, uci: "e2e4" },
@@ -33,4 +33,11 @@ test("quality markers communicate meaning without color", () => {
   assert.equal(QUALITY_SYMBOLS.inaccuracy, "?!");
   assert.equal(QUALITY_SYMBOLS.mistake, "?");
   assert.equal(QUALITY_SYMBOLS.blunder, "??");
+});
+
+test("profile restoration ignores a stale stored id and keeps the API active profile", () => {
+  const profiles = [{ id: 1, name: "Ridge" }, { id: 2, name: "Study" }];
+  assert.equal(resolveActiveProfile(profiles, profiles[1], "99").id, 2);
+  assert.equal(resolveActiveProfile(profiles, profiles[0], "2").id, 2);
+  assert.equal(resolveActiveProfile([], null, null), null);
 });

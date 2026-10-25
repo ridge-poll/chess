@@ -40,6 +40,22 @@ export function boardMotionDuration({ reduced = false, rapid = false } = {}) {
   return rapid ? 85 : 170;
 }
 
+export function pieceMotionGeometry(sourceSquare, destinationSquare, destinationPiece) {
+  if (!sourceSquare || !destinationSquare || !destinationPiece) return null;
+  const insetX = destinationPiece.left - destinationSquare.left;
+  const insetY = destinationPiece.top - destinationSquare.top;
+  const startLeft = sourceSquare.left + insetX;
+  const startTop = sourceSquare.top + insetY;
+  return {
+    left: startLeft,
+    top: startTop,
+    width: destinationPiece.width,
+    height: destinationPiece.height,
+    translateX: destinationPiece.left - startLeft,
+    translateY: destinationPiece.top - startTop,
+  };
+}
+
 export function planBoardTransition(previousFen, nextFen) {
   const previous = parseFenPieces(previousFen);
   const next = parseFenPieces(nextFen);

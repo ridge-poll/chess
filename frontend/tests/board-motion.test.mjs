@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { boardMotionDuration, createHoldNavigator, planBoardTransition } from "../static/board-motion.mjs";
+import { boardMotionDuration, createHoldNavigator, pieceMotionGeometry, planBoardTransition } from "../static/board-motion.mjs";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -48,6 +48,19 @@ test("board flips do not create movement and reduced motion disables duration", 
   assert.equal(boardMotionDuration({ reduced: true }), 0);
   assert.equal(boardMotionDuration({ rapid: true }), 85);
   assert.equal(boardMotionDuration(), 170);
+});
+
+test("animation endpoint exactly matches the static destination piece", () => {
+  const source = { left: 0.25, top: 312.625, width: 48.75, height: 48.75 };
+  const destinationSquare = { left: 195.25, top: 215.125, width: 48.75, height: 48.75 };
+  const destinationPiece = { left: 199.625, top: 219.5, width: 39.975, height: 39.975 };
+  const geometry = pieceMotionGeometry(source, destinationSquare, destinationPiece);
+
+  assert.ok(geometry);
+  assert.equal(geometry.left + geometry.translateX, destinationPiece.left);
+  assert.equal(geometry.top + geometry.translateY, destinationPiece.top);
+  assert.equal(geometry.width, destinationPiece.width);
+  assert.equal(geometry.height, destinationPiece.height);
 });
 
 test("hold navigation steps immediately, repeats, and stops on release", async () => {
