@@ -12,9 +12,9 @@
       const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
     </script>
-    <link rel="manifest" href="/static/manifest.webmanifest?v=53" />
-    <link rel="icon" href="/static/logo.png?v=53" type="image/png" />
-    <link rel="stylesheet" href="/static/styles.css?v=53" />
+    <link rel="manifest" href="/static/manifest.webmanifest?v=54" />
+    <link rel="icon" href="/static/logo.png?v=54" type="image/png" />
+    <link rel="stylesheet" href="/static/styles.css?v=54" />
   </head>
   <body>
     <div id="app">
@@ -84,76 +84,6 @@
               <button class="segment" data-stats-time="Classical">Classical</button>
             </div>
             <div class="home-stat-row" id="timeStatsGrid"></div>
-          </section>
-        </section>
-
-        <section class="view" id="openingsView">
-          <section class="repertoire-entry-heading">
-            <div>
-              <p class="eyebrow">Repertoire</p>
-              <h2>Choose your side</h2>
-              <p class="muted-copy">Explore the positions and continuations that shape your games.</p>
-            </div>
-          </section>
-          <section class="repertoire-color-list" aria-label="Choose repertoire color">
-            <button class="repertoire-color-row" data-open-repertoire="white">
-              <span class="repertoire-color-piece light-piece" aria-hidden="true">W</span>
-              <span><strong>White repertoire</strong><small id="whiteRepertoireCount">0 games</small></span>
-              <span class="row-arrow" aria-hidden="true">›</span>
-            </button>
-            <button class="repertoire-color-row" data-open-repertoire="black">
-              <span class="repertoire-color-piece dark-piece" aria-hidden="true">B</span>
-              <span><strong>Black repertoire</strong><small id="blackRepertoireCount">0 games</small></span>
-              <span class="row-arrow" aria-hidden="true">›</span>
-            </button>
-          </section>
-          <div class="repertoire-entry-actions">
-            <button id="startOpeningExplorerButton" class="text-button">Open free explorer</button>
-            <button id="toggleOpeningListButton" class="text-button">Opening statistics</button>
-          </div>
-          <section id="openingListPanel" class="opening-list-panel" hidden>
-            <div class="opening-list-toolbar">
-              <div>
-                <p class="eyebrow">All Openings</p>
-                <h2>Performance list</h2>
-              </div>
-              <label>
-                <span class="sr-only">Sort openings</span>
-                <select id="openingSortSelect" aria-label="Sort openings">
-                  <option value="most_played">Most Played</option>
-                  <option value="highest_win_rate">Highest Win Rate</option>
-                  <option value="highest_accuracy">Highest Accuracy</option>
-                  <option value="lowest_accuracy">Lowest Accuracy</option>
-                </select>
-              </label>
-            </div>
-            <div id="openingStatsList" class="opening-stats-list"></div>
-          </section>
-        </section>
-
-        <section class="view repertoire-map-view" id="repertoireMapView">
-          <header class="repertoire-map-header">
-            <button class="map-exit-button" id="exitRepertoireMap" aria-label="Back to openings" title="Back to openings">‹</button>
-            <div class="map-heading-copy">
-              <span>Repertoire map</span>
-              <strong id="repertoireMapPath">Start</strong>
-            </div>
-            <div class="map-color-switch" aria-label="Repertoire color">
-              <button data-map-color="white">White</button>
-              <button data-map-color="black">Black</button>
-            </div>
-          </header>
-          <section class="repertoire-map-context">
-            <div class="map-mini-board" id="repertoireMapBoard" aria-label="Current repertoire position"></div>
-            <div class="map-position-copy">
-              <p id="repertoireMapSide">White repertoire</p>
-              <h2 id="repertoireMapOpening">Starting position</h2>
-              <div class="map-position-metrics" id="repertoireMapMetrics"></div>
-            </div>
-          </section>
-          <section class="repertoire-map-stage" id="repertoireMapStage" aria-label="Opening repertoire map">
-            <div class="map-loading" id="repertoireMapLoading">Building repertoire…</div>
-            <svg id="repertoireMapSvg" viewBox="0 0 390 500" role="tree" aria-label="Opening moves"></svg>
           </section>
         </section>
 
@@ -401,6 +331,6 @@
         </div>
       </section>
     </div>
-    <script src="/static/app.js?v=53" type="module"></script>
+    <script src="/static/app.js?v=54" type="module"></script>
   </body>
 </html>

@@ -75,6 +75,7 @@ def get_game_detail(game_id: int, profile_id: int | None = None) -> dict[str, ob
         "openness": positions["openness"],
         "phase_performance": positions["phase_performance"],
         "critical_moments": positions["critical_moments"],
+        "estimated_performance": positions["estimated_performance"],
         "starting_fen": positions["starting_fen"],
     }
 

@@ -4,6 +4,7 @@ import chess
 
 from app.analysis.critical_moments import critical_moments
 from app.analysis.metrics import MOVE_CLASSIFICATIONS, accuracy_from_acpl, score_to_cp
+from app.analysis.performance import estimate_game_performance
 from app.analysis.position_features import openness_features
 from app.db import get_connection
 from app.services.profiles import resolve_profile_id
@@ -124,6 +125,7 @@ def get_game_positions(
         "openness": openness,
         "phase_performance": _phase_performance(positions),
         "critical_moments": critical_moments(positions, game["player_color"], candidates_by_fen),
+        "estimated_performance": estimate_game_performance(positions, game),
     }
 
 

@@ -7,9 +7,10 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=53";
-import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=53";
-import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=53";
+} from "./analysis-session.mjs?v=54";
+import { boardMotionDuration, createHoldNavigator, parseFenPieces, planBoardTransition } from "./board-motion.mjs?v=54";
+import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=54";
+import { adjacentCriticalPly, lastMoveSquares, QUALITY_SYMBOLS } from "./review-ui.mjs?v=54";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
@@ -38,21 +39,8 @@ const state = {
   games: [],
   jobs: [],
   queue: null,
-  openingStats: [],
-  repertoireGraphs: { white: null, black: null },
-  repertoireMap: {
-    color: "white",
-    activePath: [],
-    cursor: 0,
-    loading: false,
-    requestId: 0,
-    layout: null,
-    panX: 0,
-    suppressClickUntil: 0,
-  },
   profiles: [],
   activeProfile: null,
-  openingSortBy: "most_played",
   activeView: "home",
   search: "",
   sortBy: "recent",
@@ -99,8 +87,6 @@ const els = {
   navButtons: document.querySelectorAll(".bottom-nav-button"),
   views: {
     home: document.querySelector("#homeView"),
-    openings: document.querySelector("#openingsView"),
-    repertoireMap: document.querySelector("#repertoireMapView"),
     openingExplorer: document.querySelector("#openingExplorerView"),
     games: document.querySelector("#gamesView"),
     insights: document.querySelector("#insightsView"),
@@ -127,26 +113,8 @@ const els = {
   mistakeList: document.querySelector("#mistakeList"),
   openingList: document.querySelector("#openingList"),
   openingEdgeList: document.querySelector("#openingEdgeList"),
-  openingSortSelect: document.querySelector("#openingSortSelect"),
-  openingStatsList: document.querySelector("#openingStatsList"),
-  openingListPanel: document.querySelector("#openingListPanel"),
-  toggleOpeningListButton: document.querySelector("#toggleOpeningListButton"),
-  repertoireColorButtons: document.querySelectorAll("[data-open-repertoire]"),
-  whiteRepertoireCount: document.querySelector("#whiteRepertoireCount"),
-  blackRepertoireCount: document.querySelector("#blackRepertoireCount"),
-  exitRepertoireMap: document.querySelector("#exitRepertoireMap"),
-  mapColorButtons: document.querySelectorAll("[data-map-color]"),
-  repertoireMapPath: document.querySelector("#repertoireMapPath"),
-  repertoireMapBoard: document.querySelector("#repertoireMapBoard"),
-  repertoireMapSide: document.querySelector("#repertoireMapSide"),
-  repertoireMapOpening: document.querySelector("#repertoireMapOpening"),
-  repertoireMapMetrics: document.querySelector("#repertoireMapMetrics"),
-  repertoireMapStage: document.querySelector("#repertoireMapStage"),
-  repertoireMapLoading: document.querySelector("#repertoireMapLoading"),
-  repertoireMapSvg: document.querySelector("#repertoireMapSvg"),
   openingExplorerMount: document.querySelector("#openingExplorerMount"),
   openingExplorerPly: document.querySelector("#openingExplorerPly"),
-  startOpeningExplorerButton: document.querySelector("#startOpeningExplorerButton"),
   importButton: document.querySelector("#importButton"),
   fileInput: document.querySelector("#fileInput"),
   pgnInput: document.querySelector("#pgnInput"),
@@ -216,45 +184,35 @@ function setView(view) {
   els.navButtons.forEach((button) => {
     button.classList.toggle("active", button.dataset.view === primaryView);
   });
-  if (view === "openings") renderRepertoireEntry();
 }
 
 function isWorkspaceView(view) {
-  return view === "analysis" || view === "openingExplorer" || view === "repertoireMap";
+  return view === "analysis" || view === "openingExplorer";
 }
 
 function primaryViewFor(view) {
   if (view === "detail" || view === "analysis") return "games";
-  if (view === "openingExplorer" || view === "repertoireMap") return "openings";
+  if (view === "openingExplorer") return "openings";
   return view;
 }
 
 async function loadAll() {
   await loadProfiles();
   const profileQuery = profileParam();
-  const [dashboard, games, queueStatus, syncs, openingStats] = await Promise.all([
+  const [dashboard, games, queueStatus, syncs] = await Promise.all([
     api(`/api/dashboard${profileQuery}`),
     api(`/api/games${profileQuery}`),
     api(`/api/analysis/jobs${profileQuery}`),
     api(`/api/chesscom/syncs${profileQuery}`),
-    api(`/api/openings?sort_by=${encodeURIComponent(state.openingSortBy)}${profileAmpParam()}`),
   ]);
   state.dashboard = dashboard;
   state.games = games;
   state.queue = queueStatus;
   state.jobs = queueStatus.jobs || [];
   state.syncs = syncs || [];
-  state.openingStats = openingStats || [];
-  state.repertoireGraphs = { white: null, black: null };
-  state.repertoireMap.activePath = [];
-  state.repertoireMap.cursor = 0;
-  state.repertoireMap.layout = null;
-  state.repertoireMap.panX = 0;
   renderDashboard();
   renderProfiles();
   renderGames();
-  renderOpeningStats();
-  renderRepertoireEntry();
   renderJobs();
   renderSyncHistory();
   updatePolling();
@@ -295,564 +253,6 @@ function profileParam() {
 
 function profileAmpParam() {
   return state.activeProfile ? `&profile_id=${encodeURIComponent(state.activeProfile.id)}` : "";
-}
-
-function renderOpeningStats() {
-  const rows = state.openingStats || [];
-  if (!rows.length) {
-    els.openingStatsList.innerHTML = `<section class="panel">No openings yet.</section>`;
-    return;
-  }
-  els.openingStatsList.innerHTML = rows.map((row) => `
-    <article class="opening-stat-card">
-      <div>
-        <div class="stat-title">${escapeHtml(row.opening)}</div>
-        <div class="stat-subtitle">${row.games} games · ${formatNumber(row.average_game_length)} avg moves</div>
-      </div>
-      <div class="opening-stat-grid">
-        <div><span>W</span><strong>${row.win_pct}%</strong></div>
-        <div><span>D</span><strong>${row.draw_pct}%</strong></div>
-        <div><span>L</span><strong>${row.loss_pct}%</strong></div>
-        <div><span>Acc</span><strong>${row.average_accuracy == null ? "-" : `${row.average_accuracy}%`}</strong></div>
-      </div>
-    </article>
-  `).join("");
-}
-
-function renderRepertoireEntry() {
-  if (!els.whiteRepertoireCount || !els.blackRepertoireCount) return;
-  const player = String(state.activeProfile?.chesscom_username || state.dashboard?.player || "").toLowerCase();
-  const counts = { white: 0, black: 0 };
-  for (const game of state.games || []) {
-    const explicit = String(game.player_color || "").toLowerCase();
-    if (explicit === "white" || explicit === "black") {
-      counts[explicit] += 1;
-    } else if (player && String(game.white || "").toLowerCase() === player) {
-      counts.white += 1;
-    } else if (player && String(game.black || "").toLowerCase() === player) {
-      counts.black += 1;
-    }
-  }
-  els.whiteRepertoireCount.textContent = `${counts.white} ${counts.white === 1 ? "game" : "games"}`;
-  els.blackRepertoireCount.textContent = `${counts.black} ${counts.black === 1 ? "game" : "games"}`;
-  const remembered = localStorage.getItem(repertoireColorStorageKey());
-  if (remembered === "white" || remembered === "black") state.repertoireMap.color = remembered;
-  els.repertoireColorButtons.forEach((button) => {
-    button.classList.toggle("remembered", button.dataset.openRepertoire === state.repertoireMap.color);
-  });
-}
-
-function repertoireColorStorageKey() {
-  return `repertoireColor:${state.activeProfile?.id || "default"}`;
-}
-
-async function openRepertoireMap(color) {
-  const selectedColor = color === "black" ? "black" : "white";
-  const requestId = state.repertoireMap.requestId + 1;
-  state.repertoireMap.color = selectedColor;
-  state.repertoireMap.activePath = [];
-  state.repertoireMap.cursor = 0;
-  state.repertoireMap.layout = null;
-  state.repertoireMap.panX = 0;
-  state.repertoireMap.requestId = requestId;
-  localStorage.setItem(repertoireColorStorageKey(), selectedColor);
-  setView("repertoireMap");
-  renderRepertoireMap();
-  if (!state.repertoireGraphs[selectedColor]) {
-    state.repertoireMap.loading = true;
-    renderRepertoireMap();
-    try {
-      state.repertoireGraphs[selectedColor] = await api(
-        `/api/openings/repertoire?color=${selectedColor}${profileAmpParam()}&max_depth=24`,
-      );
-    } catch (error) {
-      showStatus(error.message, 8000);
-    } finally {
-      if (state.repertoireMap.requestId === requestId) state.repertoireMap.loading = false;
-    }
-  }
-  if (state.repertoireMap.requestId !== requestId) return;
-  renderRepertoireMap();
-}
-
-function currentRepertoireGraph() {
-  return state.repertoireGraphs[state.repertoireMap.color];
-}
-
-function activeRepertoireEdges(graph = currentRepertoireGraph()) {
-  if (!graph) return [];
-  return state.repertoireMap.activePath
-    .slice(0, state.repertoireMap.cursor)
-    .map((edgeId) => graph.edges[edgeId])
-    .filter(Boolean);
-}
-
-function currentRepertoirePosition(graph = currentRepertoireGraph()) {
-  if (!graph) return null;
-  const lastEdge = activeRepertoireEdges(graph).at(-1) || null;
-  return graph.positions[lastEdge?.child_position_id || graph.root_position_id] || null;
-}
-
-function renderRepertoireMap() {
-  if (!els.repertoireMapSvg) return;
-  const color = state.repertoireMap.color;
-  const graph = currentRepertoireGraph();
-  els.mapColorButtons.forEach((button) => button.classList.toggle("active", button.dataset.mapColor === color));
-  els.repertoireMapSide.textContent = `${color === "white" ? "White" : "Black"} repertoire`;
-  els.repertoireMapLoading.hidden = !state.repertoireMap.loading;
-  els.repertoireMapSvg.hidden = state.repertoireMap.loading;
-  if (state.repertoireMap.loading) return;
-  if (!graph) {
-    els.repertoireMapOpening.textContent = "Repertoire unavailable";
-    els.repertoireMapMetrics.innerHTML = "";
-    els.repertoireMapBoard.innerHTML = renderBoardSquares(STARTING_FEN, color);
-    els.repertoireMapSvg.innerHTML = `<text class="map-empty-text" x="195" y="250" text-anchor="middle">Unable to load repertoire.</text>`;
-    return;
-  }
-  const position = currentRepertoirePosition(graph);
-  if (!position) return;
-  const pathEdges = activeRepertoireEdges(graph);
-  els.repertoireMapPath.textContent = pathEdges.length ? pathEdges.map((edge) => edge.san).join("  ·  ") : "Starting position";
-  els.repertoireMapOpening.textContent = position.opening || "Opening not identified";
-  els.repertoireMapBoard.innerHTML = renderBoardSquares(position.fen || STARTING_FEN, color);
-  els.repertoireMapMetrics.innerHTML = `
-    <span><strong>${position.games}</strong><small>games</small></span>
-    <span><strong>${position.score_pct == null ? "-" : `${position.score_pct}%`}</strong><small>score</small></span>
-    <span><strong>${position.average_accuracy == null ? "-" : `${position.average_accuracy}%`}</strong><small>accuracy</small></span>`;
-  const previousLayout = state.repertoireMap.layout;
-  const map = buildRepertoireMapSvg(graph, position, pathEdges);
-  els.repertoireMapSvg.setAttribute("viewBox", `0 0 ${map.layout.width} 500`);
-  els.repertoireMapSvg.innerHTML = `
-    <g class="map-camera" style="transform:translate(${map.layout.cameraOffset}px, 0px)">
-      ${map.markup}
-    </g>`;
-  state.repertoireMap.layout = map.layout;
-  bindRepertoireMapNodes();
-  animateRepertoireMap(previousLayout, map.layout);
-}
-
-function buildRepertoireMapSvg(graph, position, pathEdges) {
-  const width = els.repertoireMapStage.clientWidth >= 680 ? 720 : 390;
-  if (!position.games) {
-    return {
-      markup: `<text class="map-empty-text" x="${width / 2}" y="250" text-anchor="middle">No ${escapeHtml(state.repertoireMap.color)} games yet.</text>`,
-      layout: emptyRepertoireLayout(width),
-    };
-  }
-  const retainedEdgeId = state.repertoireMap.activePath[state.repertoireMap.cursor] || null;
-  const allOutgoing = (position.outgoing_edge_ids || [])
-    .map((edgeId) => graph.edges[edgeId])
-    .filter(Boolean)
-    .sort((left, right) => right.games - left.games);
-  const outgoing = allOutgoing;
-  if (retainedEdgeId && !outgoing.some((edge) => edge.id === retainedEdgeId)) {
-    const retained = graph.edges[retainedEdgeId];
-    if (retained?.parent_position_id === position.id) outgoing.splice(Math.max(0, outgoing.length - 1), 1, retained);
-  }
-  const ancestorFamilies = pathEdges.map((selectedEdge, depth) => {
-    const parent = graph.positions[selectedEdge.parent_position_id];
-    const alternatives = (parent?.outgoing_edge_ids || [])
-      .map((edgeId) => graph.edges[edgeId])
-      .filter(Boolean)
-      .sort((left, right) => right.games - left.games);
-    if (!alternatives.some((edge) => edge.id === selectedEdge.id)) alternatives.push(selectedEdge);
-    return { depth, selectedEdge, alternatives };
-  });
-  const widestFamily = Math.max(outgoing.length, ...ancestorFamilies.map((family) => family.alternatives.length), 1);
-  const virtualWidth = width < 600 ? Math.max(width, 64 + widestFamily * 82) : width;
-  const baseOffset = (width - virtualWidth) / 2;
-  const minCameraOffset = Math.min(0, width - virtualWidth - 16);
-  const maxCameraOffset = virtualWidth > width ? 16 : 0;
-  const cameraOffset = clampNumber(baseOffset + state.repertoireMap.panX, minCameraOffset, maxCameraOffset);
-  state.repertoireMap.panX = cameraOffset - baseOffset;
-  const centerX = virtualWidth / 2;
-  const focusY = pathEdges.length ? 338 : 245;
-  const childY = pathEdges.length ? 455 : 410;
-  const edgeMarkup = [];
-  const nodeMarkup = [];
-  const positions = {};
-
-  if (!pathEdges.length) {
-    nodeMarkup.push(renderMapNode({
-      x: centerX,
-      y: focusY,
-      radius: 36,
-      label: "Start",
-      position,
-      positionId: position.id,
-      role: "focus origin",
-    }));
-    positions[position.id] = mapPosition(centerX, focusY, cameraOffset);
-  } else {
-    const rootPosition = graph.positions[graph.root_position_id];
-    const rootY = historicalMapY(pathEdges.length, focusY, pathEdges.length);
-    const rootRadius = 8 + 8 * historicalMapScale(pathEdges.length);
-    nodeMarkup.push(renderMapNode({
-      x: centerX,
-      y: rootY,
-      radius: rootRadius,
-      label: "Start",
-      position: rootPosition,
-      positionId: rootPosition.id,
-      role: "history origin lineage",
-      action: "root",
-      scale: historicalMapScale(pathEdges.length),
-    }));
-    positions[rootPosition.id] = mapPosition(centerX, rootY, cameraOffset);
-  }
-
-  ancestorFamilies.forEach((family) => {
-    const distance = pathEdges.length - family.depth;
-    const y = historicalMapY(distance - 1, focusY, pathEdges.length);
-    const parentY = historicalMapY(distance, focusY, pathEdges.length);
-    const scale = historicalMapScale(Math.max(1, distance - 1));
-    const baseRadius = 5 + 15 * scale;
-    const familyWidth = Math.min(virtualWidth - 44, Math.max(90, (family.alternatives.length - 1) * (42 + 34 * scale)));
-    const xs = spreadMapNodesWithin(family.alternatives.length, centerX, familyWidth);
-    const selectedIndex = family.alternatives.findIndex((edge) => edge.id === family.selectedEdge.id);
-    if (selectedIndex >= 0) xs[selectedIndex] = centerX;
-    const occupied = new Set([centerX]);
-    family.alternatives.forEach((edge, index) => {
-      if (index === selectedIndex) return;
-      let x = xs[index];
-      while ([...occupied].some((used) => Math.abs(used - x) < baseRadius * 2 + 8)) x += x < centerX ? -12 : 12;
-      xs[index] = x;
-      occupied.add(x);
-    });
-
-    family.alternatives.forEach((edge, index) => {
-      const childPosition = graph.positions[edge.child_position_id];
-      const isLineage = edge.id === family.selectedEdge.id;
-      const radius = distance === 1 ? (isLineage ? 36 : 25) : baseRadius;
-      edgeMarkup.push(renderMapEdge(edge, centerX, Math.max(8, parentY), xs[index], y - radius, {
-        lineage: isLineage,
-        historical: true,
-        distance,
-      }));
-      nodeMarkup.push(renderMapNode({
-        x: xs[index],
-        y,
-        radius,
-        label: edge.san,
-        edge,
-        position: childPosition,
-        positionId: childPosition.id,
-        role: `${distance === 1 && isLineage ? "focus" : "history"} history-${Math.min(distance, 8)} ${isLineage ? "lineage" : "relative"}`,
-        edgeId: edge.id,
-        pathDepth: family.depth,
-        selected: isLineage,
-        scale,
-      }));
-      if (isLineage) positions[childPosition.id] = mapPosition(xs[index], y, cameraOffset);
-    });
-  });
-
-  const childXs = spreadMapNodes(outgoing.length, virtualWidth);
-  outgoing.forEach((edge, index) => {
-    const childPosition = graph.positions[edge.child_position_id];
-    const childX = childXs[index];
-    edgeMarkup.push(renderMapEdge(edge, centerX, focusY + 37, childX, childY - 27, { showStats: true }));
-    nodeMarkup.push(renderMapNode({
-      x: childX,
-      y: childY,
-      radius: 27,
-      label: edge.san,
-      edge,
-      position: childPosition,
-      positionId: childPosition.id,
-      role: "next",
-      edgeId: edge.id,
-      pathDepth: pathEdges.length,
-      retained: edge.id === retainedEdgeId,
-    }));
-    positions[childPosition.id] = mapPosition(childX, childY, cameraOffset);
-  });
-  if (!outgoing.length) {
-    nodeMarkup.push(`<text class="map-empty-text" x="${centerX}" y="405" text-anchor="middle">End of observed line</text>`);
-  }
-  return {
-    markup: `<g class="map-edges">${edgeMarkup.join("")}</g><g class="map-nodes">${nodeMarkup.join("")}</g>`,
-    layout: {
-      width,
-      virtualWidth,
-      baseOffset,
-      cameraOffset,
-      minCameraOffset,
-      maxCameraOffset,
-      positions,
-    },
-  };
-}
-
-function historicalMapY(distance, focusY, totalDepth) {
-  const gap = Math.min(104, 316 / Math.max(1, totalDepth));
-  return focusY - gap * distance;
-}
-
-function historicalMapScale(distance) {
-  return Math.max(0.16, Math.pow(0.78, Math.max(0, distance - 1)));
-}
-
-function emptyRepertoireLayout(width) {
-  return {
-    width,
-    virtualWidth: width,
-    baseOffset: 0,
-    cameraOffset: 0,
-    minCameraOffset: 0,
-    maxCameraOffset: 0,
-    positions: {},
-  };
-}
-
-function mapPosition(x, y, cameraOffset) {
-  return { x, y, screenX: x + cameraOffset };
-}
-
-function spreadMapNodes(count, width) {
-  if (count <= 0) return [];
-  if (count === 1) return [width / 2];
-  const margin = 40;
-  const gap = (width - margin * 2) / (count - 1);
-  return Array.from({ length: count }, (_, index) => margin + index * gap);
-}
-
-function spreadMapNodesWithin(count, center, width) {
-  if (count <= 0) return [];
-  if (count === 1) return [center];
-  const gap = width / (count - 1);
-  return Array.from({ length: count }, (_, index) => center - width / 2 + index * gap);
-}
-
-function renderMapEdge(edge, startX, startY, endX, endY, options = {}) {
-  const { showStats = false, lineage = false, historical = false, distance = 0 } = options;
-  const vocabulary = edge.observed === false && edge.book_status === "book"
-    ? "unobserved-book"
-    : edge.book_status === "deviation" ? "deviation" : "";
-  const opacity = Math.min(0.88, Math.max(0.2, 0.16 + Number(edge.frequency || 0) * 0.72));
-  const midX = startX + (endX - startX) * 0.58;
-  const midY = startY + (endY - startY) * 0.58;
-  const statsHeight = 34;
-  const total = Math.max(1, Number(edge.wins || 0) + Number(edge.draws || 0) + Number(edge.losses || 0));
-  const lossHeight = statsHeight * Number(edge.losses || 0) / total;
-  const drawHeight = statsHeight * Number(edge.draws || 0) / total;
-  const winHeight = statsHeight - lossHeight - drawHeight;
-  return `
-    <g class="map-edge-group ${lineage ? "lineage" : ""} ${historical ? "historical" : ""} ${vocabulary}" style="--edge-opacity:${opacity};--history-fade:${Math.max(0.16, 1 - distance * 0.1)}">
-      <path class="map-edge" d="M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}"></path>
-      ${showStats ? `<text class="map-edge-count" x="${midX - 9}" y="${midY + 3}" text-anchor="end">${edge.games}</text>` : ""}
-      ${showStats ? `<g class="map-wdl" transform="translate(${midX + 8} ${midY - statsHeight / 2})">
-        <rect class="loss" width="3" height="${lossHeight}"></rect>
-        <rect class="draw" y="${lossHeight}" width="3" height="${drawHeight}"></rect>
-        <rect class="win" y="${lossHeight + drawHeight}" width="3" height="${winHeight}"></rect>
-      </g>` : ""}
-    </g>`;
-}
-
-function renderMapNode({ x, y, radius, label, edge, position, positionId, role, edgeId = "", action = "", retained = false, pathDepth = null, selected = false, scale = 1 }) {
-  const moverColor = edge?.mover_color || "white";
-  const ownership = edge?.is_user_move ? "user-move" : "opponent-move";
-  const deviation = edge?.book_status === "deviation" ? "deviation" : "";
-  const transposition = position?.is_transposition;
-  const interactive = Boolean(edgeId || action);
-  const historyTextSize = role.includes("history") ? Math.max(5, 7 + 6 * scale) : null;
-  return `
-    <g class="map-node-slot" data-map-position="${escapeHtml(positionId)}" style="transform:translate(${x}px, ${y}px)">
-      <g class="map-node ${role} ${moverColor}-move ${ownership} ${deviation} ${retained ? "retained" : ""} ${selected ? "selected" : ""} ${interactive ? "interactive" : ""}" style="--node-scale:${scale}"
-        ${edgeId ? `data-map-edge="${escapeHtml(edgeId)}"` : ""}
-        ${pathDepth == null ? "" : `data-map-depth="${pathDepth}"`}
-        ${action ? `data-map-action="${escapeHtml(action)}"` : ""}
-        ${interactive ? `role="treeitem" tabindex="0" aria-label="${escapeHtml(label)}"` : ""}>
-        <circle r="${radius}"></circle>
-        <text text-anchor="middle" dominant-baseline="central"${historyTextSize ? ` style="font-size:${historyTextSize}px"` : ""}>${escapeHtml(label)}</text>
-        ${retained ? `<circle class="retained-route-mark" cy="${radius + 8}" r="2"></circle>` : ""}
-        ${transposition ? `<g class="transposition-mark" transform="translate(${radius - 3} ${-radius + 3})"><circle r="5"></circle><circle r="2"></circle></g>` : ""}
-      </g>
-    </g>`;
-}
-
-function bindRepertoireMapNodes() {
-  els.repertoireMapSvg.querySelectorAll("[data-map-edge], [data-map-action]").forEach((node) => {
-    const select = () => {
-      if (Date.now() < state.repertoireMap.suppressClickUntil) return;
-      if (node.dataset.mapAction === "previous") navigateRepertoireMap("back");
-      else if (node.dataset.mapAction === "root") navigateRepertoireMap("root");
-      else if (node.dataset.mapEdge) navigateRepertoireMap("forward", node.dataset.mapEdge, Number(node.dataset.mapDepth));
-    };
-    node.addEventListener("click", select);
-    node.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        select();
-      }
-    });
-  });
-}
-
-function navigateRepertoireMap(direction, edgeId = null, pathDepth = null) {
-  if (direction === "root") {
-    if (state.repertoireMap.cursor <= 0) return false;
-    state.repertoireMap.cursor = 0;
-  } else if (direction === "back") {
-    if (state.repertoireMap.cursor <= 0) return false;
-    state.repertoireMap.cursor -= 1;
-  } else if (direction === "forward") {
-    if (Number.isInteger(pathDepth) && pathDepth < state.repertoireMap.cursor) {
-      const existingEdge = state.repertoireMap.activePath[pathDepth];
-      if (existingEdge === edgeId) {
-        state.repertoireMap.cursor = pathDepth + 1;
-      } else {
-        state.repertoireMap.activePath = [...state.repertoireMap.activePath.slice(0, pathDepth), edgeId];
-        state.repertoireMap.cursor = pathDepth + 1;
-      }
-      state.repertoireMap.transitionDirection = "jump";
-      state.repertoireMap.panX = 0;
-      renderRepertoireMap();
-      return true;
-    }
-    const rememberedEdge = state.repertoireMap.activePath[state.repertoireMap.cursor];
-    const selectedEdge = edgeId || rememberedEdge;
-    if (!selectedEdge) return false;
-    if (selectedEdge !== rememberedEdge) {
-      state.repertoireMap.activePath = [
-        ...state.repertoireMap.activePath.slice(0, state.repertoireMap.cursor),
-        selectedEdge,
-      ];
-    }
-    state.repertoireMap.cursor += 1;
-  } else {
-    return false;
-  }
-  state.repertoireMap.transitionDirection = direction;
-  state.repertoireMap.panX = 0;
-  renderRepertoireMap();
-  return true;
-}
-
-function animateRepertoireMap(previousLayout, nextLayout) {
-  const direction = state.repertoireMap.transitionDirection;
-  state.repertoireMap.transitionDirection = null;
-  if (!previousLayout || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  els.repertoireMapSvg.querySelectorAll(".map-node-slot").forEach((slot) => {
-    const positionId = slot.dataset.mapPosition;
-    const previous = previousLayout.positions[positionId];
-    const next = nextLayout.positions[positionId];
-    if (!next) return;
-    const startX = previous ? previous.screenX - nextLayout.cameraOffset : next.x;
-    const startY = previous ? previous.y : next.y + (direction === "back" ? -34 : 34);
-    slot.animate(
-      [
-        { transform: `translate(${startX}px, ${startY}px)`, opacity: previous ? 0.72 : 0 },
-        { transform: `translate(${next.x}px, ${next.y}px)`, opacity: 1 },
-      ],
-      { duration: 260, easing: "cubic-bezier(.22,.8,.3,1)" },
-    );
-  });
-  els.repertoireMapSvg.querySelectorAll(".map-edge-group").forEach((edge) => {
-    edge.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 210, easing: "ease-out" });
-  });
-  els.repertoireMapBoard.animate([{ opacity: 0.55 }, { opacity: 1 }], { duration: 180, easing: "ease-out" });
-}
-
-function clampNumber(value, minimum, maximum) {
-  return Math.min(maximum, Math.max(minimum, value));
-}
-
-function bindRepertoireMapGestures() {
-  let drag = null;
-  const stage = els.repertoireMapStage;
-  const camera = () => els.repertoireMapSvg.querySelector(".map-camera");
-
-  stage.addEventListener("pointerdown", (event) => {
-    if (state.activeView !== "repertoireMap" || event.button !== 0 || !state.repertoireMap.layout) return;
-    const layout = state.repertoireMap.layout;
-    drag = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startCameraOffset: layout.cameraOffset,
-      mapEdge: event.target.closest?.("[data-map-edge]")?.dataset.mapEdge || null,
-      mapDepth: Number(event.target.closest?.("[data-map-edge]")?.dataset.mapDepth),
-      mapAction: event.target.closest?.("[data-map-action]")?.dataset.mapAction || null,
-      moved: false,
-    };
-    stage.setPointerCapture(event.pointerId);
-    camera()?.classList.add("dragging");
-  });
-
-  stage.addEventListener("pointermove", (event) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const layout = state.repertoireMap.layout;
-    const dxPixels = event.clientX - drag.startX;
-    const dyPixels = event.clientY - drag.startY;
-    if (Math.hypot(dxPixels, dyPixels) > 12) drag.moved = true;
-    const dx = dxPixels * layout.width / Math.max(1, stage.clientWidth);
-    const dy = clampNumber(dyPixels * 500 / Math.max(1, stage.clientHeight), -82, 82);
-    const offset = clampNumber(
-      drag.startCameraOffset + dx,
-      layout.minCameraOffset - 18,
-      layout.maxCameraOffset + 18,
-    );
-    const target = camera();
-    if (target) target.style.transform = `translate(${offset}px, ${dy}px)`;
-  });
-
-  const finishDrag = (event, cancelled = false) => {
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    const completed = drag;
-    drag = null;
-    const layout = state.repertoireMap.layout;
-    const dxPixels = event.clientX - completed.startX;
-    const dyPixels = event.clientY - completed.startY;
-    const distance = Math.hypot(dxPixels, dyPixels);
-    if (!cancelled && distance < 12 && (completed.mapEdge || completed.mapAction)) {
-      state.repertoireMap.suppressClickUntil = Date.now() + 260;
-      if (completed.mapAction === "previous") navigateRepertoireMap("back");
-      else if (completed.mapAction === "root") navigateRepertoireMap("root");
-      else navigateRepertoireMap("forward", completed.mapEdge, completed.mapDepth);
-      return;
-    }
-    if (completed.moved) state.repertoireMap.suppressClickUntil = Date.now() + 260;
-
-    const verticalSwipe = !cancelled && Math.abs(dyPixels) >= 54 && Math.abs(dyPixels) > Math.abs(dxPixels) * 1.12;
-    if (verticalSwipe) {
-      const moved = dyPixels > 0
-        ? navigateRepertoireMap("back")
-        : navigateRepertoireMap("forward");
-      if (moved) return;
-    }
-
-    const dx = dxPixels * layout.width / Math.max(1, stage.clientWidth);
-    const settledOffset = cancelled
-      ? layout.cameraOffset
-      : clampNumber(completed.startCameraOffset + dx, layout.minCameraOffset, layout.maxCameraOffset);
-    state.repertoireMap.panX = settledOffset - layout.baseOffset;
-    const screenShift = settledOffset - layout.cameraOffset;
-    layout.cameraOffset = settledOffset;
-    Object.values(layout.positions).forEach((position) => {
-      position.screenX += screenShift;
-    });
-    const target = camera();
-    if (!target) return;
-    target.classList.remove("dragging");
-    target.classList.add("snapping");
-    target.style.transform = `translate(${settledOffset}px, 0px)`;
-    setTimeout(() => target.classList.remove("snapping"), 200);
-  };
-
-  stage.addEventListener("pointerup", (event) => finishDrag(event));
-  stage.addEventListener("pointercancel", (event) => finishDrag(event, true));
-
-  let resizeTimer = null;
-  window.addEventListener("resize", () => {
-    if (state.activeView !== "repertoireMap") return;
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      state.repertoireMap.layout = null;
-      state.repertoireMap.panX = 0;
-      renderRepertoireMap();
-    }, 100);
-  });
 }
 
 function renderDashboard() {
@@ -1321,6 +721,7 @@ async function renderGameDetail(gameId) {
       </div>
       <button class="primary diagnostic-investigate" id="analysisGameButton">Analyze Game</button>
     </header>
+    ${renderEstimatedPerformance(detail.estimated_performance || {}, game)}
     <section class="diagnostic-section analysis-panel">
       <div class="panel-heading">
         <h2>Evaluation</h2>
@@ -1436,8 +837,27 @@ function renderMoveCell(move, color) {
         <div class="move-san">${color === "white" ? `${move.move_number}.` : `${move.move_number}...`} ${escapeHtml(move.san)}</div>
         <div class="move-meta">${move.clock_seconds == null ? "No clock" : formatClock(move.clock_seconds)} · Eval ${formatEval(move.eval_after_cp, move.mate_after)}</div>
       </div>
-      ${classification ? `<span class="move-loss ${classificationClass(classification)}" title="${classificationLabel(classification)}"><span aria-hidden="true"></span>${loss}<span class="sr-only"> ${classificationLabel(classification)}</span></span>` : ""}
+      ${classification ? `<span class="move-loss ${classificationClass(classification)}" title="${classificationLabel(classification)}">${renderQualitySymbol(classification)}${loss}<span class="sr-only"> ${classificationLabel(classification)}</span></span>` : ""}
     </button>
+  `;
+}
+
+function renderEstimatedPerformance(performance, game) {
+  const white = performance.white || {};
+  const black = performance.black || {};
+  if (white.estimated_rating == null && black.estimated_rating == null) return "";
+  const userColor = userColorForGame(game);
+  const user = userColor === "black" ? black : white;
+  const opponent = userColor === "black" ? white : black;
+  const estimate = (entry) => entry.estimated_rating == null ? "—" : `~${Math.round(Number(entry.estimated_rating) / 50) * 50}`;
+  return `
+    <section class="estimated-performance" aria-label="Estimated performance">
+      <div><span>Estimated Performance</span><small>Approximate · ${escapeHtml(performance.version || "heuristic")}</small></div>
+      <dl>
+        <div><dt>You</dt><dd>${estimate(user)}</dd></div>
+        <div><dt>Opponent</dt><dd>${estimate(opponent)}</dd></div>
+      </dl>
+    </section>
   `;
 }
 
@@ -1501,7 +921,7 @@ function renderCriticalMoments(moments) {
   }
   return `<div class="critical-moment-list">${moments.map((moment) => `
     <button class="critical-moment ${moment.polarity === "positive" ? "positive" : "negative"}" data-diagnostic-ply="${moment.ply}">
-      <span class="critical-moment-marker" aria-hidden="true"></span>
+      ${renderQualityMarker(moment.classification || (moment.polarity === "positive" ? "great" : "mistake"), "critical-moment-marker")}
       <span class="critical-moment-copy">
         <strong>${escapeHtml(moveLabel(moment))}</strong>
         <small>${escapeHtml(moment.explanation || "Review this decision")}</small>
@@ -1725,6 +1145,7 @@ function renderAnalysisWorkspaceComponent(config) {
       </div>
       <h2 class="analysis-opening-name" data-board-position-title="${escapeHtml(config.id)}">${escapeHtml(config.positionTitle || "Opening not identified")}</h2>
       <div class="analysis-scroll-region">
+        ${renderAnalysisCriticalMoments(config.criticalMoments || [], config.selectedPly)}
         ${renderAnalysisNotation(config)}
       </div>
       <div class="analysis-bottom-controls" aria-label="Analysis controls">
@@ -1743,6 +1164,21 @@ function renderAnalysisWorkspaceComponent(config) {
         <button class="analysis-step-button" data-board-id="${escapeHtml(config.id)}" data-board-nav="next" title="Next move" aria-label="Next move">›</button>
       </div>
     </section>
+  `;
+}
+
+function renderAnalysisCriticalMoments(moments, selectedPly) {
+  if (!moments.length) return "";
+  const currentIndex = moments.findIndex((moment) => Number(moment.ply) === Number(selectedPly));
+  return `
+    <div class="analysis-critical-nav" aria-label="Critical moments">
+      <span>Critical <strong>${currentIndex >= 0 ? currentIndex + 1 : "–"} / ${moments.length}</strong></span>
+      <div class="critical-ply-markers">
+        ${moments.map((moment) => `<button class="${moment.polarity === "positive" ? "positive" : "negative"}${Number(moment.ply) === Number(selectedPly) ? " selected" : ""}" data-critical-ply="${moment.ply}" aria-label="${escapeHtml(moment.criticality_type || "Critical moment")} at ${escapeHtml(moveLabel(moment))}">${renderQualitySymbol(moment.classification || (moment.polarity === "positive" ? "great" : "mistake"))}</button>`).join("")}
+      </div>
+      <button data-critical-direction="prev" aria-label="Previous critical moment">‹</button>
+      <button data-critical-direction="next" aria-label="Next critical moment">›</button>
+    </div>
   `;
 }
 
@@ -1954,6 +1390,10 @@ function updateBoardComponent(config) {
     const selected = board.querySelector(`[data-board-square="${config.selectedSquare}"]`);
     selected?.classList.add("selected");
   }
+  if (config.lastMove?.from && config.lastMove?.to) {
+    board.querySelector(`[data-board-square="${config.lastMove.from}"]`)?.classList.add("last-move-source");
+    board.querySelector(`[data-board-square="${config.lastMove.to}"]`)?.classList.add("last-move-destination");
+  }
   (config.legalMoves || []).forEach((move) => {
     if (move.from !== config.selectedSquare) return;
     const target = board.querySelector(`[data-board-square="${move.to}"]`);
@@ -2129,7 +1569,19 @@ function renderBoardQualityDot(classification) {
   const normalized = normalizedClassification(classification);
   if (!normalized) return "";
   const label = classificationLabel(normalized);
-  return `<span class="board-quality-dot ${classificationClass(normalized)}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"></span>`;
+  return `<span class="board-quality-dot ${classificationClass(normalized)}" role="img" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}">${renderQualitySymbol(normalized)}</span>`;
+}
+
+function renderQualitySymbol(classification) {
+  const normalized = normalizedClassification(classification);
+  const symbol = QUALITY_SYMBOLS[normalized];
+  return symbol ? `<span aria-hidden="true">${symbol}</span>` : "";
+}
+
+function renderQualityMarker(classification, extraClass = "") {
+  const normalized = normalizedClassification(classification);
+  if (!normalized) return "";
+  return `<span class="quality-marker ${classificationClass(normalized)} ${extraClass}" role="img" aria-label="${escapeHtml(classificationLabel(normalized))}" title="${escapeHtml(classificationLabel(normalized))}">${renderQualitySymbol(normalized)}</span>`;
 }
 
 function renderEvaluationBar(evaluation = {}) {
@@ -2456,7 +1908,10 @@ async function openBlankAnalysisBoard() {
 async function openGameAnalysisBoard(gameId) {
   state.selectedGameId = gameId;
   state.analysisReturnView = "detail";
-  const workspace = await api(`/api/board/games/${gameId}${profileParam()}`);
+  const [workspace, detail] = await Promise.all([
+    api(`/api/board/games/${gameId}${profileParam()}`),
+    api(`/api/games/${gameId}${profileParam()}`),
+  ]);
   const startingWorkspace = await api("/api/board/position", {
     method: "POST",
     body: JSON.stringify({
@@ -2471,6 +1926,7 @@ async function openGameAnalysisBoard(gameId) {
     state.boardOrientations.analysisBoard,
   );
   applyAnalysisWorkspace(startingWorkspace, workspace.game || null, workspace.positions || [], analysisSession);
+  state.analysisBoard.criticalMoments = detail.critical_moments || [];
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.setAttribute("aria-label", "Back to game");
@@ -2480,7 +1936,10 @@ async function openGameAnalysisBoard(gameId) {
 async function openGameAnalysisBoardFromPly(ply) {
   if (!state.selectedGameId) return;
   state.analysisReturnView = "detail";
-  const workspace = await api(`/api/board/games/${state.selectedGameId}${profileParam()}`);
+  const [workspace, detail] = await Promise.all([
+    api(`/api/board/games/${state.selectedGameId}${profileParam()}`),
+    api(`/api/games/${state.selectedGameId}${profileParam()}`),
+  ]);
   workspace.selected_ply = Math.max(0, Math.min(Number(ply) || 0, (workspace.moves || []).length));
   const selectedWorkspace = await api("/api/board/position", {
     method: "POST",
@@ -2501,6 +1960,7 @@ async function openGameAnalysisBoardFromPly(ply) {
     workspace.positions || [],
     analysisSession,
   );
+  state.analysisBoard.criticalMoments = detail.critical_moments || [];
   await refreshAnalysisOpeningName();
   renderAnalysisBoard();
   els.backFromAnalysis.setAttribute("aria-label", "Back to game");
@@ -2523,6 +1983,7 @@ function applyAnalysisWorkspace(
       ? state.analysisBoard?.analysisSession || null
       : analysisSession,
     openingName: state.analysisBoard?.openingName || "Starting position",
+    criticalMoments: sourceGame === null ? [] : state.analysisBoard?.criticalMoments || [],
     selectedSquare: null,
   };
 }
@@ -2578,6 +2039,7 @@ function renderAnalysisBoard() {
     positionTitle: boardState.openingName || "Opening not identified",
     analysisSession: boardState.analysisSession,
     savedPositions: boardState.savedPositions || [],
+    criticalMoments: boardState.criticalMoments || [],
   });
   updateAnalysisBoard();
   bindAnalysisBoardInteractions();
@@ -2614,6 +2076,7 @@ function updateAnalysisBoard() {
     allowInteraction: true,
     selectedSquare: boardState.selectedSquare,
     legalMoves: boardState.legal_moves || [],
+    lastMove: lastMoveSquares(boardState.move_history || [], boardState.selected_ply),
     lastMoveQuality: savedMove?.classification ? {
       square: destinationSquare(savedMove.uci),
       classification: savedMove.classification,
@@ -2732,6 +2195,19 @@ function bindAnalysisBoardInteractions() {
   document.querySelectorAll("[data-analysis-variation-ply]").forEach((node) => {
     node.addEventListener("click", async () => {
       await selectAnalysisVariationPosition(Number(node.dataset.analysisVariationPly));
+    });
+  });
+  document.querySelectorAll("[data-critical-ply]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      await selectAnalysisMainPly(Number(node.dataset.criticalPly));
+    });
+  });
+  document.querySelectorAll("[data-critical-direction]").forEach((node) => {
+    node.addEventListener("click", async () => {
+      const moments = state.analysisBoard?.criticalMoments || [];
+      const current = Number(state.analysisBoard?.selected_ply) || 0;
+      const target = adjacentCriticalPly(moments, current, node.dataset.criticalDirection);
+      if (target != null) await selectAnalysisMainPly(target);
     });
   });
   document.querySelector('[data-board-surface="analysisBoard"]')?.addEventListener("click", async (event) => {
@@ -3013,6 +2489,7 @@ function updateOpeningExplorer() {
     allowInteraction: true,
     selectedSquare: explorer.selectedSquare,
     legalMoves: explorer.legal_moves || [],
+    lastMove: lastMoveSquares(explorer.move_history || [], explorer.selected_ply),
   });
   document.querySelectorAll("[data-opening-main-ply]").forEach((node) => {
     node.classList.toggle("selected", Number(node.dataset.openingMainPly) === Number(explorer.selected_ply));
@@ -3416,7 +2893,7 @@ async function syncChessCom(options = {}) {
       body: JSON.stringify({
         username,
         days,
-        force: els.syncForce.checked,
+        force: options.force === true || (!options.auto && els.syncForce.checked),
         profile_id: Number(state.activeProfile.id),
       }),
     });
@@ -3648,33 +3125,13 @@ if ("serviceWorker" in navigator) {
 }
 
 els.navButtons.forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
+    if (button.dataset.view === "openings") {
+      await ensureOpeningExplorer();
+      setView("openingExplorer");
+      return;
+    }
     setView(button.dataset.view);
-  });
-});
-
-els.startOpeningExplorerButton.addEventListener("click", async () => {
-  await ensureOpeningExplorer();
-  setView("openingExplorer");
-});
-
-els.repertoireColorButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
-    await openRepertoireMap(button.dataset.openRepertoire);
-  });
-});
-
-els.toggleOpeningListButton.addEventListener("click", () => {
-  els.openingListPanel.hidden = !els.openingListPanel.hidden;
-  els.toggleOpeningListButton.textContent = els.openingListPanel.hidden ? "Opening statistics" : "Hide statistics";
-});
-
-els.exitRepertoireMap.addEventListener("click", () => setView("openings"));
-
-els.mapColorButtons.forEach((button) => {
-  button.addEventListener("click", async () => {
-    if (button.dataset.mapColor === state.repertoireMap.color) return;
-    await openRepertoireMap(button.dataset.mapColor);
   });
 });
 
@@ -3682,7 +3139,7 @@ els.refreshButton.addEventListener("click", async () => {
   try {
     const username = (els.chesscomUsername.value || state.activeProfile?.chesscom_username || "").trim();
     if (username) {
-      await syncChessCom({ username, auto: true });
+      await syncChessCom({ username, auto: true, force: true });
       return;
     }
     await loadAll();
@@ -3700,7 +3157,7 @@ els.gamesRefreshButton.addEventListener("click", async () => {
     return;
   }
   try {
-    await syncChessCom({ username, auto: true });
+    await syncChessCom({ username, auto: true, force: true });
     setView("games");
   } catch (_error) {
     // syncChessCom owns the user-facing failure state.
@@ -3849,12 +3306,6 @@ els.sortSelect.addEventListener("change", (event) => {
   renderGames();
 });
 
-els.openingSortSelect.addEventListener("change", async (event) => {
-  state.openingSortBy = event.target.value;
-  state.openingStats = await api(`/api/openings?sort_by=${encodeURIComponent(state.openingSortBy)}${profileAmpParam()}`);
-  renderOpeningStats();
-});
-
 els.profileSelect.addEventListener("change", async (event) => {
   const profileId = Number(event.target.value);
   const profile = await api("/api/profiles/active", {
@@ -3936,7 +3387,7 @@ els.gameList.addEventListener("keydown", async (event) => {
 
 els.backToGames.addEventListener("click", () => setView("games"));
 
-els.backFromOpening.addEventListener("click", () => setView("openings"));
+els.backFromOpening.addEventListener("click", () => setView("home"));
 
 els.backFromAnalysis.addEventListener("click", () => {
   setView(state.analysisReturnView || (state.selectedGameId ? "detail" : "games"));

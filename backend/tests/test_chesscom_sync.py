@@ -61,6 +61,28 @@ def test_sync_chesscom_archives_imports_and_records_archive(
     assert syncs[0]["status"] == "complete"
 
 
+def test_forced_sync_refetches_a_completed_archive(tmp_path: Path, monkeypatch) -> None:
+    database_path = tmp_path / "forced.sqlite3"
+    monkeypatch.setattr(db, "settings", config.Settings(database_path=database_path))
+    db.init_db(database_path)
+    fetches = 0
+
+    monkeypatch.setattr(chesscom_sync, "_get_json", lambda _url: {"archives": [ARCHIVE_URL]})
+
+    def fake_text(_url: str) -> str:
+        nonlocal fetches
+        fetches += 1
+        return PGN
+
+    monkeypatch.setattr(chesscom_sync, "_get_text", fake_text)
+    sync_chesscom_archives(SyncOptions(username="RidgePoll1", limit=1))
+    forced = sync_chesscom_archives(SyncOptions(username="RidgePoll1", limit=1, force=True))
+
+    assert fetches == 2
+    assert forced["results"][0]["status"] == "complete"
+    assert forced["duplicates"] == 1
+
+
 def test_sync_chesscom_archives_filters_recent_games_and_saves_preferences(
     tmp_path: Path,
     monkeypatch,
