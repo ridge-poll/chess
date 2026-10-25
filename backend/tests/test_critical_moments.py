@@ -78,3 +78,14 @@ def test_moments_are_limited_to_player_color_and_use_black_perspective() -> None
     assert len(moments) == 1
     assert moments[0]["ply"] == 2
     assert moments[0]["criticality_type"] == "Only Move"
+
+
+def test_all_threshold_worthy_nonadjacent_moments_are_returned() -> None:
+    positions = [
+        _position(ply, loss=180, classification="mistake", played=f"a2a{index}", best="e2e4")
+        for index, ply in enumerate(range(1, 24, 4), start=1)
+    ]
+
+    moments = critical_moments(positions, "white", {})
+
+    assert len(moments) == len(positions)

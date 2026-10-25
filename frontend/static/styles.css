@@ -1621,6 +1621,16 @@ input[type="number"] {
   color: var(--muted);
 }
 
+.notation-move.critical-notation { font-weight: 900; }
+.notation-move.critical-red { color: #e25555; }
+.notation-move.critical-orange { color: #e8943a; }
+.notation-move.critical-green { color: #5fae63; }
+.notation-move.critical-blue { color: #4f91d8; }
+.notation-move.critical-notation.selected {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  outline: 1px solid color-mix(in srgb, currentColor 34%, transparent);
+}
+
 .analysis-engine-panel {
   border-top: 1px solid color-mix(in srgb, var(--line) 62%, transparent);
 }
@@ -1870,6 +1880,14 @@ input[type="number"] {
 .continuation-row > span:nth-child(2) {
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+.continuation-engine-line {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .continuation-awaiting {
@@ -2239,46 +2257,6 @@ input[type="number"] {
 .estimated-performance dl div { display: grid; gap: 1px; }
 .estimated-performance dt { color: var(--muted); font-size: 0.7rem; }
 .estimated-performance dd { margin: 0; font-size: 1.1rem; font-weight: 900; }
-
-.analysis-critical-nav {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 38px 38px;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 0.74rem;
-}
-
-.analysis-critical-nav > button,
-.critical-ply-markers button {
-  min-width: 0;
-  border: 0;
-  background: transparent;
-}
-
-.analysis-critical-nav > button {
-  height: 34px;
-  padding: 0;
-  font-size: 1.35rem;
-}
-
-.critical-ply-markers { display: flex; justify-content: flex-end; gap: 4px; overflow: hidden; }
-.critical-ply-markers button {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--quality-mistake);
-  color: #fff;
-  font-size: 0.56rem;
-  font-weight: 950;
-}
-.critical-ply-markers button.positive { background: var(--quality-best); }
-.critical-ply-markers button.selected { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px currentColor; }
 
 .piece {
   position: relative;

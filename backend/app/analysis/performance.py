@@ -4,7 +4,7 @@ from math import sqrt
 from statistics import mean, median
 
 
-ESTIMATOR_VERSION = "heuristic-v1"
+ESTIMATOR_VERSION = "heuristic-v2"
 MIN_DECISIONS = 8
 
 
@@ -57,12 +57,12 @@ def _estimate_side(
     # The loss curve supplies the behavioral signal; error shape prevents one
     # average from treating a steady game and a one-blunder game as identical.
     behavior_level = (
-        2_350
-        - 72 * sqrt(average_loss)
-        - 1.8 * median_loss
-        - 360 * severe_rate
-        - 300 * blunder_rate
-        + 140 * clean_rate
+        2_200
+        - 78 * sqrt(average_loss)
+        - 2.2 * median_loss
+        - 500 * severe_rate
+        - 450 * blunder_rate
+        + 100 * clean_rate
     )
     own_rating = _numeric(game.get(f"{color}_elo"))
     opponent_color = "black" if color == "white" else "white"
@@ -76,7 +76,7 @@ def _estimate_side(
         "Classical": 35,
         "Daily / Correspondence": 45,
     }.get(str(game.get("time_class") or ""), 0)
-    estimate = behavior_level * 0.68 + context_level * 0.32 + time_adjustment
+    estimate = behavior_level * 0.76 + context_level * 0.24 + time_adjustment
     estimate = max(400, min(2_800, estimate))
     rounded = int(round(estimate / 50) * 50)
     inputs.update(

@@ -7,10 +7,10 @@ import {
   selectAnalysisVariationPly,
   stepAnalysisBackward,
   stepAnalysisForward,
-} from "./analysis-session.mjs?v=55";
-import { boardMotionDuration, createHoldNavigator, parseFenPieces, pieceMotionGeometry, planBoardTransition } from "./board-motion.mjs?v=55";
-import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=55";
-import { adjacentCriticalPly, lastMoveSquares, QUALITY_SYMBOLS, resolveActiveProfile } from "./review-ui.mjs?v=55";
+} from "./analysis-session.mjs?v=56";
+import { boardMotionDuration, createHoldNavigator, parseFenPieces, pieceMotionGeometry, planBoardTransition } from "./board-motion.mjs?v=56";
+import { consumeNdjson, ProgressiveEngineRegistry } from "./progressive-engine.mjs?v=56";
+import { lastMoveSquares, QUALITY_SYMBOLS, resolveActiveProfile } from "./review-ui.mjs?v=56";
 
 const STARTING_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const ANALYSIS_DEPTHS = { fast: 6, normal: 10, deep: 14 };
@@ -29,9 +29,10 @@ function storedAnalysisSettings() {
       depth: Object.hasOwn(ANALYSIS_DEPTHS, saved.depth) ? saved.depth : "normal",
       suggestionArrows: saved.suggestionArrows !== false,
       threatArrows: saved.threatArrows === true,
+      criticalMoveColors: saved.criticalMoveColors !== false,
     };
   } catch (_error) {
-    return { depth: "normal", suggestionArrows: true, threatArrows: false };
+    return { depth: "normal", suggestionArrows: true, threatArrows: false, criticalMoveColors: true };
   }
 }
 
@@ -145,6 +146,7 @@ const els = {
   closeAnalysisSettings: document.querySelector("#closeAnalysisSettings"),
   suggestionArrowsToggle: document.querySelector("#suggestionArrowsToggle"),
   threatArrowsToggle: document.querySelector("#threatArrowsToggle"),
+  criticalMoveColorsToggle: document.querySelector("#criticalMoveColorsToggle"),
   backFromOpening: document.querySelector("#backFromOpening"),
   gameDetail: document.querySelector("#gameDetail"),
   analysisBoardMount: document.querySelector("#analysisBoardMount"),
@@ -1185,7 +1187,6 @@ function renderAnalysisWorkspaceComponent(config) {
       </div>
       <h2 class="analysis-opening-name" data-board-position-title="${escapeHtml(config.id)}">${escapeHtml(config.positionTitle || "Opening not identified")}</h2>
       <div class="analysis-scroll-region">
-        ${renderAnalysisCriticalMoments(config.criticalMoments || [], config.selectedPly)}
         ${renderAnalysisNotation(config)}
       </div>
       <div class="analysis-bottom-controls" aria-label="Analysis controls">
@@ -1207,21 +1208,6 @@ function renderAnalysisWorkspaceComponent(config) {
   `;
 }
 
-function renderAnalysisCriticalMoments(moments, selectedPly) {
-  if (!moments.length) return "";
-  const currentIndex = moments.findIndex((moment) => Number(moment.ply) === Number(selectedPly));
-  return `
-    <div class="analysis-critical-nav" aria-label="Critical moments">
-      <span>Critical <strong>${currentIndex >= 0 ? currentIndex + 1 : "–"} / ${moments.length}</strong></span>
-      <div class="critical-ply-markers">
-        ${moments.map((moment) => `<button class="${moment.polarity === "positive" ? "positive" : "negative"}${Number(moment.ply) === Number(selectedPly) ? " selected" : ""}" data-critical-ply="${moment.ply}" aria-label="${escapeHtml(moment.criticality_type || "Critical moment")} at ${escapeHtml(moveLabel(moment))}">${renderQualitySymbol(moment.classification || (moment.polarity === "positive" ? "great" : "mistake"))}</button>`).join("")}
-      </div>
-      <button data-critical-direction="prev" aria-label="Previous critical moment">‹</button>
-      <button data-critical-direction="next" aria-label="Next critical moment">›</button>
-    </div>
-  `;
-}
-
 function renderAnalysisNotation(config) {
   const namespace = config.notationNamespace || "analysis";
   const session = config.analysisSession;
@@ -1230,6 +1216,7 @@ function renderAnalysisNotation(config) {
     .filter((move) => Number(move.ply) > 0)
     .sort((a, b) => Number(a.ply) - Number(b.ply));
   const mainPositions = session && savedPositions.length ? savedPositions : pathPositions;
+  const criticalByPly = new Map((config.criticalMoments || []).map((moment) => [Number(moment.ply), moment]));
   if (!mainPositions.length) {
     return '<div class="analysis-notation empty" aria-label="Move notation"></div>';
   }
@@ -1242,7 +1229,10 @@ function renderAnalysisNotation(config) {
     const ply = Number(move.ply);
     const prefix = ply % 2 === 1 ? `${Math.ceil(ply / 2)}. ` : "";
     const selected = branchPoint == null && ply === Number(config.selectedPly) ? " selected" : "";
-    return `<button class="notation-move${selected}" data-${namespace}-main-ply="${ply}">${prefix}${escapeHtml(move.san || move.uci || "")}</button>`;
+    const critical = state.analysisSettings.criticalMoveColors ? criticalByPly.get(ply) : null;
+    const criticalClass = critical ? ` critical-notation ${criticalNotationClass(critical)}` : "";
+    const title = critical ? ` title="${escapeHtml(`${critical.criticality_type}: ${critical.explanation}`)}"` : "";
+    return `<button class="notation-move${selected}${criticalClass}" data-${namespace}-main-ply="${ply}"${title}>${prefix}${escapeHtml(move.san || move.uci || "")}</button>`;
   });
 
   if (branchPoint != null && variation.length) {
@@ -1260,6 +1250,14 @@ function renderAnalysisNotation(config) {
   }
 
   return `<div class="analysis-notation" aria-label="Move notation">${mainTokens.join("")}</div>`;
+}
+
+function criticalNotationClass(moment) {
+  const type = String(moment.criticality_type || "").toLowerCase();
+  if (type === "blunder") return "critical-red";
+  if (type === "mistake") return "critical-orange";
+  if (type === "only move" || type === "missed opportunity") return "critical-blue";
+  return moment.polarity === "positive" ? "critical-green" : "critical-orange";
 }
 
 function renderBoardFirstComponent(config) {
@@ -1315,15 +1313,29 @@ function renderOpeningContinuationPanel(explorer) {
   const master = state.masterExplorer;
   const matchesPosition = master.fen === explorer.fen;
   const databaseMoves = matchesPosition ? master.data?.moves || [] : [];
+  const enginePanel = state.enginePanels.openingExplorer;
+  const engineFallback = matchesPosition && Boolean(master.error);
+  const engineCandidates = engineFallback && enginePanel?.fen === explorer.fen
+    ? (enginePanel.engine?.candidates || []).slice(0, 3)
+    : [];
   const fallbackMoves = (explorer.legal_moves || []).slice(0, 8);
-  const moves = databaseMoves.length ? databaseMoves : fallbackMoves;
+  const moves = databaseMoves.length ? databaseMoves : engineFallback ? engineCandidates : fallbackMoves;
   return `
     <div class="continuation-panel board-first-panel-content" data-opening-master-panel>
-      <div class="continuation-header"><span>Move</span><span>Games</span><span>Results</span></div>
+      <div class="continuation-header"><span>Move</span><span>${engineFallback ? "Eval" : "Games"}</span><span>${engineFallback ? "Line" : "Results"}</span></div>
       <div class="continuation-list">
-        ${matchesPosition && master.loading && !master.data
+        ${(matchesPosition && master.loading && !master.data) || (engineFallback && enginePanel?.loading && !engineCandidates.length)
           ? Array.from({ length: 5 }, () => '<div class="continuation-skeleton"><i></i><i></i><i></i></div>').join("")
           : moves.map((move) => {
+            if (engineFallback) {
+              return `
+                <button class="continuation-row engine-fallback-row" data-opening-continuation="${escapeHtml(move.uci)}">
+                  <strong>${escapeHtml(move.san || move.uci)}</strong>
+                  <span>${escapeHtml(formatEngineEval(move.score_cp, move.mate))}</span>
+                  <span class="continuation-engine-line">${escapeHtml((move.pv_san || []).slice(1, 5).join(" ") || "—")}</span>
+                </button>
+              `;
+            }
             const hasResults = Number(move.games) > 0;
             const lowSample = hasResults && Number(move.games) < 100;
             return `
@@ -1335,7 +1347,7 @@ function renderOpeningContinuationPanel(explorer) {
             `;
           }).join("")}
       </div>
-      ${matchesPosition && master.error ? `<div class="continuation-notice"><span>Database results unavailable.</span><button data-master-retry>Retry</button></div>` : ""}
+      ${engineFallback ? `<div class="continuation-notice"><span>Engine fallback${enginePanel?.engine?.depth ? ` · depth ${enginePanel.engine.depth}` : ""}${enginePanel?.loading ? " · refining" : ""}</span><button data-master-retry>Retry database</button></div>` : ""}
     </div>
   `;
 }
@@ -1368,6 +1380,7 @@ async function requestMasterExplorer(force = false) {
     const result = await api(`/api/openings/masters?${params}`);
     if (state.masterExplorer.requestId !== requestId || state.openingExplorer?.fen !== explorer.fen) return;
     if (result.status !== "ready") throw new Error(result.error || "Master opening data is unavailable.");
+    progressiveEngines.cancel("openingExplorer");
     state.masterExplorer = { fen: explorer.fen, loading: false, data: result, error: null, requestId };
     if (result.opening?.name) {
       explorer.openingName = result.opening.name;
@@ -1377,6 +1390,7 @@ async function requestMasterExplorer(force = false) {
   } catch (error) {
     if (state.masterExplorer.requestId !== requestId || state.openingExplorer?.fen !== explorer.fen) return;
     state.masterExplorer = { fen: explorer.fen, loading: false, data: null, error: error.message, requestId };
+    schedulePositionEngine("openingExplorer", explorer.fen, {}, true);
   }
   updateOpeningMasterPanel();
 }
@@ -1513,17 +1527,17 @@ function animateBoardTransition(board, transition, previousPieces) {
   };
 
   transition.moves.forEach((move) => {
+    const sourceRect = squareRect(move.from);
     const destinationRect = squareRect(move.to);
     const destinationPiece = board.querySelector(`[data-board-square="${move.to}"] .piece`);
     const destinationPieceRect = destinationPiece?.getBoundingClientRect();
-    const placed = placeGhost(previousPieces.get(move.from), move.from, destinationPieceRect, destinationRect);
-    if (!placed || !destinationRect || !destinationPiece || !destinationPieceRect) return;
-    destinationPiece.style.visibility = "hidden";
-    hiddenPieces.push(destinationPiece);
-    animations.push(placed.ghost.animate([
+    if (!sourceRect || !destinationRect || !destinationPiece || !destinationPieceRect) return;
+    const geometry = pieceMotionGeometry(sourceRect, destinationRect, destinationPieceRect);
+    if (!geometry) return;
+    animations.push(destinationPiece.animate([
+      { transform: `translate3d(${-geometry.translateX}px, ${-geometry.translateY}px, 0)` },
       { transform: "translate3d(0, 0, 0)" },
-      { transform: `translate3d(${placed.geometry.translateX}px, ${placed.geometry.translateY}px, 0)` },
-    ], { duration, easing: "cubic-bezier(.2,.78,.24,1)", fill: "forwards" }));
+    ], { duration, easing: "cubic-bezier(.2,.78,.24,1)" }));
   });
 
   transition.disappearing.forEach((piece) => {
@@ -1743,6 +1757,10 @@ function schedulePositionEngine(boardId, fen, game = {}, allowPlay = false) {
 }
 
 function updateEnginePanel(boardId, game = {}, allowPlay = false) {
+  if (boardId === "openingExplorer" && state.masterExplorer.error) {
+    updateOpeningMasterPanel();
+    return;
+  }
   const target = document.querySelector(`[data-engine-panel="${boardId}"]`);
   if (!target) return;
   const panel = state.enginePanels[boardId];
@@ -1981,6 +1999,7 @@ async function openGameAnalysisBoard(gameId) {
       selected_ply: 0,
     }),
   });
+  state.boardOrientations.analysisBoard = workspace.game?.player_color === "black" ? "black" : "white";
   const analysisSession = createAnalysisSession(
     workspace.moves || [],
     0,
@@ -2010,6 +2029,7 @@ async function openGameAnalysisBoardFromPly(ply) {
       selected_ply: workspace.selected_ply,
     }),
   });
+  state.boardOrientations.analysisBoard = workspace.game?.player_color === "black" ? "black" : "white";
   const analysisSession = createAnalysisSession(
     workspace.moves || [],
     workspace.selected_ply,
@@ -2256,19 +2276,6 @@ function bindAnalysisBoardInteractions() {
   document.querySelectorAll("[data-analysis-variation-ply]").forEach((node) => {
     node.addEventListener("click", async () => {
       await selectAnalysisVariationPosition(Number(node.dataset.analysisVariationPly));
-    });
-  });
-  document.querySelectorAll("[data-critical-ply]").forEach((node) => {
-    node.addEventListener("click", async () => {
-      await selectAnalysisMainPly(Number(node.dataset.criticalPly));
-    });
-  });
-  document.querySelectorAll("[data-critical-direction]").forEach((node) => {
-    node.addEventListener("click", async () => {
-      const moments = state.analysisBoard?.criticalMoments || [];
-      const current = Number(state.analysisBoard?.selected_ply) || 0;
-      const target = adjacentCriticalPly(moments, current, node.dataset.criticalDirection);
-      if (target != null) await selectAnalysisMainPly(target);
     });
   });
   document.querySelector('[data-board-surface="analysisBoard"]')?.addEventListener("click", async (event) => {
@@ -3292,6 +3299,12 @@ els.threatArrowsToggle.addEventListener("change", () => {
   updateAnalysisEngineArrows();
 });
 
+els.criticalMoveColorsToggle.addEventListener("change", () => {
+  state.analysisSettings.criticalMoveColors = els.criticalMoveColorsToggle.checked;
+  persistAnalysisSettings();
+  renderAnalysisBoard();
+});
+
 function renderAnalysisSettings() {
   document.querySelectorAll("[data-analysis-depth]").forEach((button) => {
     const selected = button.dataset.analysisDepth === state.analysisSettings.depth;
@@ -3300,6 +3313,7 @@ function renderAnalysisSettings() {
   });
   els.suggestionArrowsToggle.checked = state.analysisSettings.suggestionArrows;
   els.threatArrowsToggle.checked = state.analysisSettings.threatArrows;
+  els.criticalMoveColorsToggle.checked = state.analysisSettings.criticalMoveColors;
 }
 
 function persistAnalysisSettings() {

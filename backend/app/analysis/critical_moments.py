@@ -8,7 +8,6 @@ from app.analysis.metrics import score_to_cp
 NEGATIVE_MIN_CPL = 75
 POSITIVE_MIN_GAP_CP = 80
 ONLY_MOVE_GAP_CP = 150
-MAX_CRITICAL_MOMENTS = 6
 ADJACENT_PLY_WINDOW = 2
 
 
@@ -87,8 +86,6 @@ def critical_moments(
         if any(abs(int(moment["ply"]) - int(existing["ply"])) <= ADJACENT_PLY_WINDOW for existing in selected):
             continue
         selected.append(moment)
-        if len(selected) >= MAX_CRITICAL_MOMENTS:
-            break
     return sorted(selected, key=lambda item: int(item["ply"]))
 
 

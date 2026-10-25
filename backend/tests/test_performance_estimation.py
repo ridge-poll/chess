@@ -31,3 +31,12 @@ def test_short_game_declines_to_make_a_precise_estimate() -> None:
     assert result["white"]["estimated_rating"] is None
     assert result["black"]["estimated_rating"] is None
     assert result["white"]["sample_quality"] == "insufficient"
+
+
+def test_estimator_is_sensitive_to_repeated_errors() -> None:
+    result = estimate_game_performance(
+        _positions([12] * 12, [35, 90, 180, 320] * 3),
+        {"white_elo": 1800, "black_elo": 1800, "time_class": "Rapid"},
+    )
+
+    assert result["white"]["estimated_rating"] - result["black"]["estimated_rating"] >= 400
