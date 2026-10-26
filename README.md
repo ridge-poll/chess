@@ -2,7 +2,10 @@
 
 A mobile-first chess improvement app for importing Chess.com games, analyzing them with Stockfish, and tracking long-term performance across profiles, openings, time controls, and game phases.
 
-The app is intentionally local-first: FastAPI serves the backend and frontend, SQLite stores the data, and Stockfish runs on your machine.
+The repository now has two deliberately different execution environments:
+
+- `backend/` + `frontend/`: the FastAPI/Python web laboratory for rapid experimentation.
+- `mobile/`: the standalone Flutter production client, designed to store data and eventually run Stockfish directly on the device without requiring the web backend or a laptop.
 
 ## Features
 
@@ -32,6 +35,13 @@ The app is intentionally local-first: FastAPI serves the backend and frontend, S
 - Storage: SQLite
 - Frontend: mobile-first HTML/CSS/JavaScript served directly by FastAPI
 - Tests: pytest
+
+Mobile foundation:
+
+- Flutter and Dart
+- Device-local SQLite via `sqflite`
+- Device-local preferences via `shared_preferences`
+- Repository/service boundaries for future direct Chess.com sync and local Stockfish
 
 There is no frontend build step.
 
@@ -65,6 +75,26 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Open `http://localhost:8000`.
+
+## Flutter Mobile App
+
+The Flutter app is intentionally not a FastAPI client. Its current first checkpoint supports local profiles, persistent settings, and profile-scoped games stored in an on-device SQLite database.
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+Run mobile tests and build the unsigned iOS app:
+
+```bash
+cd mobile
+flutter test
+flutter build ios --simulator
+```
+
+The sample-game action on an empty Games screen exists only to demonstrate local persistence before direct Chess.com sync is added.
 
 ## Configuration
 
@@ -125,10 +155,10 @@ Engine analysis is cached by position and depth. Saved-game analysis stores move
 
 ## Current Roadmap
 
-- Engine candidates inside Analysis and Opening Explorer.
-- Synchronized saved-game analysis view with board, graph, move list, and candidate context.
-- Opening repertoire tree based on the user's own games.
-- Human-centric metrics such as decision difficulty, volatility, resourcefulness, conversion efficiency, defensive resilience, and time allocation.
+- Flutter checkpoint 2: direct Chess.com sync into local SQLite.
+- Flutter checkpoint 3: local Stockfish with progressive analysis, cancellation, and caching.
+- Flutter checkpoint 4: local full-game analytics and shared Python/Dart reference fixtures.
+- Flutter checkpoint 5: native board-first Analysis and post-game review.
 
 ## Credits
 
