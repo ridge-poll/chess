@@ -1,5 +1,5 @@
 abstract interface class ChessComSyncService {
-  Future<void> sync({
+  Future<SyncResult> sync({
     required int profileId,
     required String username,
     required int days,
@@ -7,14 +7,18 @@ abstract interface class ChessComSyncService {
   });
 }
 
-class ChessComSyncUnavailable implements ChessComSyncService {
-  @override
-  Future<void> sync({
-    required int profileId,
-    required String username,
-    required int days,
-    required bool force,
-  }) {
-    throw UnsupportedError('Direct Chess.com sync arrives in checkpoint 2.');
-  }
+class SyncResult {
+  const SyncResult({
+    required this.imported,
+    required this.duplicates,
+    required this.errors,
+    required this.archives,
+  });
+
+  final int imported;
+  final int duplicates;
+  final List<String> errors;
+  final int archives;
+
+  bool get succeeded => errors.isEmpty;
 }

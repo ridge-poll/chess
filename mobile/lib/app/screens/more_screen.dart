@@ -2,24 +2,44 @@ import 'package:flutter/material.dart';
 
 import '../../domain/app_controller.dart';
 
-class MoreScreen extends StatelessWidget {
+class MoreScreen extends StatefulWidget {
   const MoreScreen({required this.controller, super.key});
   final AppController controller;
+
+  @override
+  State<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends State<MoreScreen> {
+  late final TextEditingController _username;
+
+  AppController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _username = TextEditingController(
+      text: controller.activeProfile?.chessComUsername ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _username.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.fromLTRB(16, 18, 16, 32),
     children: [
-      Text(
-        'PROFILE',
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(letterSpacing: 1.1),
-      ),
+      _sectionLabel(context, 'PROFILE'),
       const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
             child: DropdownButtonFormField<int>(
+              key: ValueKey(controller.activeProfile?.id),
               initialValue: controller.activeProfile?.id,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
@@ -33,8 +53,11 @@ class MoreScreen extends StatelessWidget {
                     ),
                   )
                   .toList(),
-              onChanged: (value) {
-                if (value != null) controller.selectProfile(value);
+              onChanged: (value) async {
+                if (value == null) return;
+                await controller.selectProfile(value);
+                _username.text =
+                    controller.activeProfile?.chessComUsername ?? '';
               },
             ),
           ),
@@ -47,43 +70,84 @@ class MoreScreen extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 28),
-      Text(
-        'APP',
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(letterSpacing: 1.1),
+      _sectionLabel(context, 'CHESS.COM'),
+      const SizedBox(height: 8),
+      TextField(
+        controller: _username,
+        autocorrect: false,
+        textCapitalization: TextCapitalization.none,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          labelText: 'Username',
+          prefixIcon: Icon(Icons.alternate_email),
+        ),
       ),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Expanded(
+            child: DropdownButtonFormField<int>(
+              key: ValueKey(
+                '${controller.activeProfile?.id}-${controller.activeProfile?.syncDays}',
+              ),
+              initialValue: controller.activeProfile?.syncDays ?? 7,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Sync period',
+              ),
+              items: const [7, 14, 30, 90]
+                  .map(
+                    (days) => DropdownMenuItem(
+                      value: days,
+                      child: Text('$days days'),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) _save(days: value);
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.icon(
+            onPressed: controller.syncState == SyncState.syncing
+                ? null
+                : _saveAndSync,
+            icon: controller.syncState == SyncState.syncing
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            label: const Text('Sync'),
+          ),
+        ],
+      ),
+      if (controller.syncMessage != null) ...[
+        const SizedBox(height: 10),
+        Text(
+          controller.syncMessage!,
+          style: TextStyle(
+            fontSize: 13,
+            color: controller.syncState == SyncState.failure
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+      const SizedBox(height: 28),
+      _sectionLabel(context, 'APPEARANCE'),
       SwitchListTile.adaptive(
         contentPadding: EdgeInsets.zero,
         title: const Text('Dark mode'),
         value: controller.settings.darkMode,
         onChanged: (_) => controller.toggleTheme(),
       ),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Sync window'),
-        subtitle: const Text('Stored locally for this installation'),
-        trailing: DropdownButton<int>(
-          value: controller.settings.syncDays,
-          items: const [7, 14, 30, 90]
-              .map(
-                (days) =>
-                    DropdownMenuItem(value: days, child: Text('$days days')),
-              )
-              .toList(),
-          onChanged: (value) {
-            if (value != null) controller.setSyncDays(value);
-          },
-        ),
-      ),
-      const SizedBox(height: 28),
-      Text(
-        'LOCAL-FIRST',
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(letterSpacing: 1.1),
-      ),
+      const SizedBox(height: 24),
+      _sectionLabel(context, 'LOCAL-FIRST'),
       const SizedBox(height: 8),
       Text(
-        'Profiles, games, settings, and future analysis are stored on this device. This app does not require FastAPI or your Mac to launch.',
+        'Profiles and imported games are stored on this device and remain available offline.',
         style: TextStyle(
           height: 1.45,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -91,6 +155,21 @@ class MoreScreen extends StatelessWidget {
       ),
     ],
   );
+
+  Widget _sectionLabel(BuildContext context, String label) => Text(
+    label,
+    style: Theme.of(context).textTheme.labelSmall?.copyWith(letterSpacing: 1.1),
+  );
+
+  Future<void> _save({int? days}) => controller.saveSyncPreferences(
+    username: _username.text,
+    days: days ?? controller.activeProfile?.syncDays ?? 7,
+  );
+
+  Future<void> _saveAndSync() async {
+    await _save();
+    await controller.syncGames();
+  }
 
   Future<void> _createProfile(BuildContext context) async {
     final text = TextEditingController();
@@ -117,6 +196,9 @@ class MoreScreen extends StatelessWidget {
       ),
     );
     text.dispose();
-    if (name != null) await controller.createProfile(name);
+    if (name != null) {
+      await controller.createProfile(name);
+      _username.clear();
+    }
   }
 }

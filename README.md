@@ -78,7 +78,7 @@ Open `http://localhost:8000`.
 
 ## Flutter Mobile App
 
-The Flutter app is intentionally not a FastAPI client. Its current first checkpoint supports local profiles, persistent settings, and profile-scoped games stored in an on-device SQLite database.
+The Flutter app is intentionally not a FastAPI client. It supports local profiles, persistent settings, profile-scoped games stored in an on-device SQLite database, and direct Chess.com synchronization. Manual refreshes always contact Chess.com, respect the active profile's sync window, and safely ignore games already stored for that profile.
 
 ```bash
 cd mobile
@@ -155,7 +155,7 @@ Engine analysis is cached by position and depth. Saved-game analysis stores move
 
 ## Current Roadmap
 
-- Flutter checkpoint 2: direct Chess.com sync into local SQLite.
+- Flutter checkpoint 2: direct Chess.com sync into local SQLite. Complete.
 - Flutter checkpoint 3: local Stockfish with progressive analysis, cancellation, and caching.
 - Flutter checkpoint 4: local full-game analytics and shared Python/Dart reference fixtures.
 - Flutter checkpoint 5: native board-first Analysis and post-game review.

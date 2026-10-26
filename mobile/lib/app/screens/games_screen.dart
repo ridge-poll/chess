@@ -33,15 +33,35 @@ class GamesScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton.filledTonal(
-                  onPressed: () {},
-                  tooltip: 'Sync arrives in checkpoint 2',
-                  icon: const Icon(Icons.sync),
+                IconButton(
+                  onPressed: controller.syncState == SyncState.syncing
+                      ? null
+                      : controller.syncGames,
+                  tooltip: 'Sync Chess.com games',
+                  icon: controller.syncState == SyncState.syncing
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator.adaptive(
+                            strokeWidth: 2.2,
+                          ),
+                        )
+                      : const Icon(Icons.refresh_rounded),
                 ),
               ],
             ),
           ),
         ),
+        if (controller.syncMessage != null)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            sliver: SliverToBoxAdapter(
+              child: _SyncNotice(
+                state: controller.syncState,
+                message: controller.syncMessage!,
+                onDismiss: controller.clearSyncMessage,
+              ),
+            ),
+          ),
         if (controller.profileGames.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
@@ -80,12 +100,12 @@ class _EmptyGames extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'No local games yet',
+            'Your games will live here',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
-            'Games stored here remain available offline and belong only to the selected profile.',
+            'Add your Chess.com username in More, then refresh. Imported games remain available offline.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -101,6 +121,53 @@ class _EmptyGames extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _SyncNotice extends StatelessWidget {
+  const _SyncNotice({
+    required this.state,
+    required this.message,
+    required this.onDismiss,
+  });
+
+  final SyncState state;
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final isError = state == SyncState.failure;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isError
+            ? Theme.of(context).colorScheme.errorContainer
+            : Theme.of(context).colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+        child: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 13)),
+            ),
+            if (state != SyncState.syncing)
+              IconButton(
+                onPressed: onDismiss,
+                tooltip: 'Dismiss',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close, size: 18),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _GameRow extends StatelessWidget {

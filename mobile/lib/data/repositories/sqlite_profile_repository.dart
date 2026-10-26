@@ -25,4 +25,26 @@ class SqliteProfileRepository implements ProfileRepository {
     });
     return Profile(id: id, name: name, createdAt: createdAt);
   }
+
+  @override
+  Future<Profile> updateSyncPreferences(
+    int profileId, {
+    required String username,
+    required int days,
+  }) async {
+    final connection = await database.instance;
+    await connection.update(
+      'profiles',
+      {'chesscom_username': username.trim().toLowerCase(), 'sync_days': days},
+      where: 'id = ?',
+      whereArgs: [profileId],
+    );
+    final rows = await connection.query(
+      'profiles',
+      where: 'id = ?',
+      whereArgs: [profileId],
+      limit: 1,
+    );
+    return Profile.fromMap(rows.single);
+  }
 }

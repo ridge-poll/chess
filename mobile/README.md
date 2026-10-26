@@ -1,17 +1,30 @@
-# chess_analytics_mobile
+# Chess Analytics Mobile
 
-A new Flutter project.
+The standalone, local-first Flutter client for Chess Analytics. It does not
+require FastAPI or a laptop to launch, synchronize games, or read local data.
 
-## Getting Started
+## Current Capabilities
 
-This project is a starting point for a Flutter application.
+- local profiles and preferences
+- direct, forced Chess.com synchronization
+- multi-game PGN parsing with legal move and FEN reconstruction
+- duplicate-safe, profile-owned SQLite storage
+- offline Games history after synchronization
 
-A few resources to get you started if this is your first Flutter project:
+## Run
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Run validation with:
+
+```bash
+flutter analyze
+flutter test
+```
+
+Local Stockfish and full-game analytics arrive in the following migration
+checkpoints. The web application remains the reference implementation while
+those systems are ported to Dart.

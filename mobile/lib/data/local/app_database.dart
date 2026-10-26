@@ -18,14 +18,16 @@ class AppDatabase {
     return _factory.openDatabase(
       location,
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
         onConfigure: (database) => database.execute('PRAGMA foreign_keys = ON'),
         onCreate: (database, version) async {
           await database.execute('''
             CREATE TABLE profiles (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-              created_at TEXT NOT NULL
+              created_at TEXT NOT NULL,
+              chesscom_username TEXT,
+              sync_days INTEGER NOT NULL DEFAULT 7
             )
           ''');
           await database.execute('''
@@ -38,6 +40,11 @@ class AppDatabase {
               black TEXT NOT NULL,
               white_elo INTEGER,
               black_elo INTEGER,
+              event TEXT,
+              site TEXT,
+              eco TEXT,
+              time_control TEXT,
+              ply_count INTEGER NOT NULL DEFAULT 0,
               player_color TEXT NOT NULL,
               result TEXT NOT NULL,
               opening TEXT,
@@ -89,6 +96,49 @@ class AppDatabase {
               fetched_at TEXT NOT NULL
             )
           ''');
+          await database.execute('''
+            CREATE TABLE sync_history (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+              username TEXT NOT NULL,
+              started_at TEXT NOT NULL,
+              completed_at TEXT,
+              imported INTEGER NOT NULL DEFAULT 0,
+              duplicates INTEGER NOT NULL DEFAULT 0,
+              errors TEXT
+            )
+          ''');
+        },
+        onUpgrade: (database, oldVersion, newVersion) async {
+          if (oldVersion < 2) {
+            await database.execute(
+              'ALTER TABLE profiles ADD COLUMN chesscom_username TEXT',
+            );
+            await database.execute(
+              'ALTER TABLE profiles ADD COLUMN sync_days INTEGER NOT NULL DEFAULT 7',
+            );
+            await database.execute('ALTER TABLE games ADD COLUMN event TEXT');
+            await database.execute('ALTER TABLE games ADD COLUMN site TEXT');
+            await database.execute('ALTER TABLE games ADD COLUMN eco TEXT');
+            await database.execute(
+              'ALTER TABLE games ADD COLUMN time_control TEXT',
+            );
+            await database.execute(
+              'ALTER TABLE games ADD COLUMN ply_count INTEGER NOT NULL DEFAULT 0',
+            );
+            await database.execute('''
+              CREATE TABLE sync_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+                username TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                imported INTEGER NOT NULL DEFAULT 0,
+                duplicates INTEGER NOT NULL DEFAULT 0,
+                errors TEXT
+              )
+            ''');
+          }
         },
       ),
     );
