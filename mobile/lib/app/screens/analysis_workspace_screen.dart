@@ -12,11 +12,13 @@ class AnalysisWorkspaceScreen extends StatefulWidget {
     required this.gameId,
     required this.controller,
     required this.session,
+    this.initialPly = 0,
     super.key,
   });
   final int gameId;
   final AppController controller;
   final AnalysisSession session;
+  final int initialPly;
 
   @override
   State<AnalysisWorkspaceScreen> createState() =>
@@ -38,6 +40,9 @@ class _AnalysisWorkspaceScreenState extends State<AnalysisWorkspaceScreen> {
     await session.load();
     await widget.controller.analyzeGame(widget.gameId);
     await session.load();
+    if (widget.initialPly > 0) {
+      session.jumpTo(widget.initialPly);
+    }
     await session.analyzeCurrent();
   }
 

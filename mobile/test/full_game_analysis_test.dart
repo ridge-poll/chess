@@ -4,6 +4,7 @@ import 'package:chess_analytics_mobile/analytics/performance_estimator.dart';
 import 'package:chess_analytics_mobile/data/local/app_database.dart';
 import 'package:chess_analytics_mobile/data/repositories/sqlite_game_repository.dart';
 import 'package:chess_analytics_mobile/data/repositories/sqlite_profile_repository.dart';
+import 'package:chess_analytics_mobile/domain/game_diagnostics.dart';
 import 'package:chess_analytics_mobile/services/chess_engine.dart';
 import 'package:chess_analytics_mobile/services/full_game_analyzer.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +21,7 @@ const pgn = '''
 [BlackElo "1800"]
 [TimeControl "600"]
 
-1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. d3 Bc5 5. Nc3 d6 1-0
+1. e4 {[%clk 0:09:58]} e5 {[%clk 0:09:57]} 2. Nf3 {[%clk 0:09:51]} Nc6 {[%clk 0:09:49]} 3. Bc4 Nf6 4. d3 Bc5 5. Nc3 d6 1-0
 ''';
 
 class FixtureEngine implements ChessEngine {
@@ -178,6 +179,17 @@ void main() {
       final second = await analyzer.analyze(game.id);
       expect(second.skipped, isTrue);
       expect(engine.calls, calls);
+      final diagnostics = await GameDiagnosticsRepository(database)
+          .load(game.id);
+      expect(diagnostics.moves, hasLength(moves.length));
+      expect(diagnostics.moves.first.clockMs, 598000);
+      expect(diagnostics.moves[2].timeSpentMs, 7000);
+      expect(
+        diagnostics.qualityCounts.values.reduce((a, b) => a + b),
+        moves.length,
+      );
+      expect(diagnostics.phases.first.name, 'Opening');
+      expect(diagnostics.criticalMoments, isNotEmpty);
       await database.close();
     },
   );

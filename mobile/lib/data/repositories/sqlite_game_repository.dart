@@ -12,6 +12,15 @@ class SqliteGameRepository implements GameRepository {
   final PgnImporter importer;
 
   @override
+  Future<void> delete(int profileId, int gameId) async {
+    await (await database.instance).delete(
+      'games',
+      where: 'id = ? AND profile_id = ?',
+      whereArgs: [gameId, profileId],
+    );
+  }
+
+  @override
   Future<List<GameSummary>> listForProfile(int profileId) async {
     final rows = await (await database.instance).query(
       'games',
@@ -24,25 +33,26 @@ class SqliteGameRepository implements GameRepository {
 
   @override
   Future<void> insertFixture(int profileId) async {
-    final connection = await database.instance;
     final stamp = DateTime.now().toUtc();
-    final fingerprint = 'fixture-$profileId-${stamp.microsecondsSinceEpoch}';
-    await connection.insert('games', {
-      'profile_id': profileId,
-      'fingerprint': fingerprint,
-      'played_at': stamp.toIso8601String(),
-      'white': 'LocalPlayer',
-      'black': 'SampleOpponent',
-      'white_elo': 1420,
-      'black_elo': 1457,
-      'player_color': 'white',
-      'result': '1-0',
-      'opening': "Queen's Gambit Declined",
-      'time_class': 'Rapid',
-      'accuracy': 86.4,
-      'pgn': '[White "LocalPlayer"]\n[Black "SampleOpponent"]\n[Result "1-0"]\n\n1. d4 d5 2. c4 e6 3. Nc3 Nf6 1-0',
-      'created_at': stamp.toIso8601String(),
-    });
+    await importPgn(
+      profileId: profileId,
+      username: 'LocalPlayer',
+      pgn:
+          '''
+[Event "Sample game"]
+[Site "fixture-${stamp.microsecondsSinceEpoch}"]
+[Date "${stamp.year}.${stamp.month.toString().padLeft(2, '0')}.${stamp.day.toString().padLeft(2, '0')}"]
+[White "LocalPlayer"]
+[Black "SampleOpponent"]
+[WhiteElo "1420"]
+[BlackElo "1457"]
+[Result "1-0"]
+[Opening "Queen's Gambit Declined"]
+[TimeControl "600+0"]
+
+1. d4 {[%clk 0:09:58]} d5 {[%clk 0:09:56]} 2. c4 {[%clk 0:09:51]} e6 {[%clk 0:09:49]} 3. Nc3 Nf6 1-0
+''',
+    );
   }
 
   @override
@@ -97,6 +107,7 @@ class SqliteGameRepository implements GameRepository {
               'uci': move.uci,
               'fen_before': move.fenBefore,
               'fen_after': move.fenAfter,
+              'clock_ms': move.clockMs,
             });
           }
           await batch.commit(noResult: true);

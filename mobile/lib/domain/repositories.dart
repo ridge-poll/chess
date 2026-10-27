@@ -14,6 +14,7 @@ abstract interface class ProfileRepository {
 
 abstract interface class GameRepository {
   Future<List<GameSummary>> listForProfile(int profileId);
+  Future<void> delete(int profileId, int gameId);
   Future<void> insertFixture(int profileId);
   Future<ImportResult> importPgn({
     required int profileId,

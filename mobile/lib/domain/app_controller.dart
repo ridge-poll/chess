@@ -201,6 +201,14 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  Future<void> deleteGame(int gameId) async {
+    final profile = activeProfile;
+    if (profile == null) return;
+    await gameRepository.delete(profile.id, gameId);
+    await _loadGames();
+    notifyListeners();
+  }
+
   String _friendlySyncError(Object error) {
     final message = error.toString().replaceFirst('Bad state: ', '');
     if (message.contains('HTTP 404')) {

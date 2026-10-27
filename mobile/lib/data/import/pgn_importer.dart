@@ -26,6 +26,7 @@ class ParsedPgnMove {
     required this.uci,
     required this.fenBefore,
     required this.fenAfter,
+    this.clockMs,
   });
 
   final int ply;
@@ -33,6 +34,7 @@ class ParsedPgnMove {
   final String uci;
   final String fenBefore;
   final String fenAfter;
+  final int? clockMs;
 }
 
 class PgnParseResult {
@@ -77,6 +79,10 @@ class PgnImporter {
     }).cast<Map<dynamic, dynamic>>();
     final replay = chess.Chess();
     final moves = <ParsedPgnMove>[];
+    final clocks = RegExp(r'\[%clk\s+([0-9:.]+)\]')
+        .allMatches(rawPgn)
+        .map((match) => _clockMs(match.group(1)!))
+        .toList();
     for (var index = 0; index < history.length; index++) {
       final move = history[index];
       final before = replay.fen;
@@ -91,6 +97,7 @@ class PgnImporter {
           uci: '${move['from']}${move['to']}',
           fenBefore: before,
           fenAfter: replay.fen,
+          clockMs: index < clocks.length ? clocks[index] : null,
         ),
       );
     }
@@ -111,6 +118,20 @@ class PgnImporter {
       playedAt: _playedAt(headers),
       moves: moves,
     );
+  }
+
+  int? _clockMs(String value) {
+    final parts = value.split(':').map(double.tryParse).toList();
+    if (parts.any((part) => part == null)) return null;
+    double seconds;
+    if (parts.length == 3) {
+      seconds = parts[0]! * 3600 + parts[1]! * 60 + parts[2]!;
+    } else if (parts.length == 2) {
+      seconds = parts[0]! * 60 + parts[1]!;
+    } else {
+      seconds = parts.single!;
+    }
+    return (seconds * 1000).round();
   }
 
   List<String> _splitGames(String source) {
