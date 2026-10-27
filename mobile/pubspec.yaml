@@ -40,6 +40,7 @@ dependencies:
   http: ^1.6.0
   chess: ^0.8.1
   crypto: ^3.0.8
+  multistockfish: ^0.6.1
 
 dev_dependencies:
   flutter_test:

@@ -10,6 +10,8 @@ require FastAPI or a laptop to launch, synchronize games, or read local data.
 - multi-game PGN parsing with legal move and FEN reconstruction
 - duplicate-safe, profile-owned SQLite storage
 - offline Games history after synchronization
+- embedded local Stockfish with progressive Multi-PV analysis
+- cancellable searches and persistent position caching
 
 ## Run
 
@@ -25,6 +27,6 @@ flutter analyze
 flutter test
 ```
 
-Local Stockfish and full-game analytics arrive in the following migration
-checkpoints. The web application remains the reference implementation while
-those systems are ported to Dart.
+Stockfish is provided by Lichess's GPL-3.0 `multistockfish` package. Full-game
+analytics arrive in the following migration checkpoint; the web application
+remains the reference implementation while those systems are ported to Dart.

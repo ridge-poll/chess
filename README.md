@@ -156,7 +156,7 @@ Engine analysis is cached by position and depth. Saved-game analysis stores move
 ## Current Roadmap
 
 - Flutter checkpoint 2: direct Chess.com sync into local SQLite. Complete.
-- Flutter checkpoint 3: local Stockfish with progressive analysis, cancellation, and caching.
+- Flutter checkpoint 3: local Stockfish with progressive analysis, cancellation, and caching. Complete.
 - Flutter checkpoint 4: local full-game analytics and shared Python/Dart reference fixtures.
 - Flutter checkpoint 5: native board-first Analysis and post-game review.
 
