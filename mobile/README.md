@@ -15,6 +15,8 @@ require FastAPI or a laptop to launch, synchronize games, or read local data.
 - resumable full-game analysis with user accuracy and move classifications
 - positive and negative Critical Moments
 - versioned, confidence-aware estimated performance
+- board-first saved-game Analysis with legal temporary variations
+- player-oriented board, engine lines, evaluation bar, and Critical navigation
 
 ## Run
 

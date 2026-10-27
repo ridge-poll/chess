@@ -6,6 +6,7 @@ import 'models/profile.dart';
 import 'repositories.dart';
 import '../services/chess_com_sync_service.dart';
 import '../services/full_game_analyzer.dart';
+import 'analysis_session.dart';
 
 enum LoadState { idle, loading, ready, failure }
 
@@ -188,6 +189,16 @@ class AppController extends ChangeNotifier {
       analyzingGameIds.remove(gameId);
       notifyListeners();
     }
+  }
+
+  AnalysisSession createAnalysisSession(int gameId) {
+    final analyzer = gameAnalyzer;
+    if (analyzer == null) throw StateError('Local analysis is unavailable.');
+    return AnalysisSession(
+      gameId: gameId,
+      database: analyzer.database,
+      engine: analyzer.engine,
+    );
   }
 
   String _friendlySyncError(Object error) {

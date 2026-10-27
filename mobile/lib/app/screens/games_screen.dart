@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/app_controller.dart';
 import '../../domain/models/game.dart';
+import 'analysis_workspace_screen.dart';
 
 class GamesScreen extends StatelessWidget {
   const GamesScreen({required this.controller, super.key});
@@ -79,13 +80,24 @@ class GamesScreen extends StatelessWidget {
                   controller.profileGames[index].id,
                 ),
                 onTap: () =>
-                    controller.analyzeGame(controller.profileGames[index].id),
+                    _openAnalysis(context, controller.profileGames[index].id),
               ),
             ),
           ),
       ],
     );
   }
+
+  Future<void> _openAnalysis(BuildContext context, int gameId) =>
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => AnalysisWorkspaceScreen(
+            gameId: gameId,
+            controller: controller,
+            session: controller.createAnalysisSession(gameId),
+          ),
+        ),
+      );
 }
 
 class _EmptyGames extends StatelessWidget {

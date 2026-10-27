@@ -41,6 +41,7 @@ dependencies:
   chess: ^0.8.1
   crypto: ^3.0.8
   multistockfish: ^0.6.1
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -59,6 +60,8 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+    - assets/pieces/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
