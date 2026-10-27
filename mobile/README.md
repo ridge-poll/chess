@@ -12,6 +12,9 @@ require FastAPI or a laptop to launch, synchronize games, or read local data.
 - offline Games history after synchronization
 - embedded local Stockfish with progressive Multi-PV analysis
 - cancellable searches and persistent position caching
+- resumable full-game analysis with user accuracy and move classifications
+- positive and negative Critical Moments
+- versioned, confidence-aware estimated performance
 
 ## Run
 
@@ -27,6 +30,6 @@ flutter analyze
 flutter test
 ```
 
-Stockfish is provided by Lichess's GPL-3.0 `multistockfish` package. Full-game
-analytics arrive in the following migration checkpoint; the web application
-remains the reference implementation while those systems are ported to Dart.
+Stockfish is provided by Lichess's GPL-3.0 `multistockfish` package. The web
+application remains the reference implementation for analytics as native
+diagnostic and board interfaces are added.

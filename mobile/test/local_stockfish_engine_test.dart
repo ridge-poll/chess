@@ -108,7 +108,10 @@ void main() {
           ),
         )
         .drain<void>();
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    for (var attempt = 0; attempt < 20; attempt++) {
+      if (transport.commands.any((command) => command.startsWith('go '))) break;
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
     await engine.cancel();
     await done.timeout(const Duration(seconds: 1));
     expect(transport.commands, contains('stop'));

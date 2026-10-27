@@ -73,8 +73,14 @@ class GamesScreen extends StatelessWidget {
             sliver: SliverList.separated(
               itemCount: controller.profileGames.length,
               separatorBuilder: (_, index) => const Divider(height: 1),
-              itemBuilder: (context, index) =>
-                  _GameRow(game: controller.profileGames[index]),
+              itemBuilder: (context, index) => _GameRow(
+                game: controller.profileGames[index],
+                analyzing: controller.analyzingGameIds.contains(
+                  controller.profileGames[index].id,
+                ),
+                onTap: () =>
+                    controller.analyzeGame(controller.profileGames[index].id),
+              ),
             ),
           ),
       ],
@@ -171,8 +177,14 @@ class _SyncNotice extends StatelessWidget {
 }
 
 class _GameRow extends StatelessWidget {
-  const _GameRow({required this.game});
+  const _GameRow({
+    required this.game,
+    required this.analyzing,
+    required this.onTap,
+  });
   final GameSummary game;
+  final bool analyzing;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -188,69 +200,78 @@ class _GameRow extends StatelessWidget {
     return Semantics(
       button: true,
       label: '${game.opponent}, ${game.timeClass}',
-      child: SizedBox(
-        height: 64,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 30,
-              child: Text(
-                symbol,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
+      child: InkWell(
+        onTap: analyzing ? null : onTap,
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 30,
+                child: Text(
+                  symbol,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          game.opponent,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      if (game.opponentElo != null)
-                        Text(
-                          '${game.opponentElo}',
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            game.opponent,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${game.opening ?? 'Opening unavailable'} · ${game.timeClass}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        if (game.opponentElo != null)
+                          Text(
+                            '${game.opponentElo}',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 3),
+                    Text(
+                      '${game.opening ?? 'Opening unavailable'} · ${game.timeClass}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              game.accuracy == null
-                  ? '—'
-                  : '${game.accuracy!.toStringAsFixed(1)}%',
-              style: const TextStyle(fontWeight: FontWeight.w800),
-            ),
-          ],
+              const SizedBox(width: 12),
+              if (analyzing)
+                const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                )
+              else
+                Text(
+                  game.accuracy == null
+                      ? '—'
+                      : '${game.accuracy!.toStringAsFixed(1)}%',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+            ],
+          ),
         ),
       ),
     );

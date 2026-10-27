@@ -5,6 +5,7 @@ import 'models/game.dart';
 import 'models/profile.dart';
 import 'repositories.dart';
 import '../services/chess_com_sync_service.dart';
+import '../services/full_game_analyzer.dart';
 
 enum LoadState { idle, loading, ready, failure }
 
@@ -16,11 +17,13 @@ class AppController extends ChangeNotifier {
     required this.gameRepository,
     required this.settingsRepository,
     required this.syncService,
+    this.gameAnalyzer,
   });
   final ProfileRepository profileRepository;
   final GameRepository gameRepository;
   final SettingsRepository settingsRepository;
   final ChessComSyncService syncService;
+  final FullGameAnalyzer? gameAnalyzer;
 
   LoadState state = LoadState.idle;
   AppSettings settings = const AppSettings();
@@ -29,6 +32,8 @@ class AppController extends ChangeNotifier {
   String? errorMessage;
   SyncState syncState = SyncState.idle;
   String? syncMessage;
+  final Set<int> analyzingGameIds = {};
+  final Map<int, String> analysisErrors = {};
 
   Profile? get activeProfile {
     for (final profile in availableProfiles) {
@@ -166,6 +171,23 @@ class AppController extends ChangeNotifier {
     syncState = SyncState.idle;
     syncMessage = null;
     notifyListeners();
+  }
+
+  Future<void> analyzeGame(int gameId) async {
+    final analyzer = gameAnalyzer;
+    if (analyzer == null || analyzingGameIds.contains(gameId)) return;
+    analyzingGameIds.add(gameId);
+    analysisErrors.remove(gameId);
+    notifyListeners();
+    try {
+      await analyzer.analyze(gameId);
+      await _loadGames();
+    } catch (error) {
+      analysisErrors[gameId] = error.toString();
+    } finally {
+      analyzingGameIds.remove(gameId);
+      notifyListeners();
+    }
   }
 
   String _friendlySyncError(Object error) {

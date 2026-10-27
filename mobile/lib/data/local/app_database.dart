@@ -18,7 +18,7 @@ class AppDatabase {
     return _factory.openDatabase(
       location,
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onConfigure: (database) => database.execute('PRAGMA foreign_keys = ON'),
         onCreate: (database, version) async {
           await database.execute('''
@@ -51,6 +51,9 @@ class AppDatabase {
               time_class TEXT NOT NULL,
               pgn TEXT NOT NULL,
               accuracy REAL,
+              estimated_white INTEGER,
+              estimated_black INTEGER,
+              performance_version TEXT,
               created_at TEXT NOT NULL,
               UNIQUE(profile_id, fingerprint)
             )
@@ -108,6 +111,7 @@ class AppDatabase {
               errors TEXT
             )
           ''');
+          await _createAnalysisTables(database);
         },
         onUpgrade: (database, oldVersion, newVersion) async {
           if (oldVersion < 2) {
@@ -139,9 +143,65 @@ class AppDatabase {
               )
             ''');
           }
+          if (oldVersion < 3) {
+            await database.execute(
+              'ALTER TABLE games ADD COLUMN estimated_white INTEGER',
+            );
+            await database.execute(
+              'ALTER TABLE games ADD COLUMN estimated_black INTEGER',
+            );
+            await database.execute(
+              'ALTER TABLE games ADD COLUMN performance_version TEXT',
+            );
+            await _createAnalysisTables(database);
+          }
         },
       ),
     );
+  }
+
+  static Future<void> _createAnalysisTables(Database database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS move_analyses (
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        ply INTEGER NOT NULL,
+        depth INTEGER NOT NULL,
+        played_uci TEXT NOT NULL,
+        best_uci TEXT,
+        eval_before_cp INTEGER,
+        eval_after_cp INTEGER,
+        mate_before INTEGER,
+        mate_after INTEGER,
+        centipawn_loss INTEGER NOT NULL,
+        classification TEXT NOT NULL,
+        candidates_json TEXT,
+        PRIMARY KEY(game_id, ply, depth)
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS analysis_jobs (
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        depth INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        analyzed_plies INTEGER NOT NULL DEFAULT 0,
+        total_plies INTEGER NOT NULL,
+        error TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(game_id, depth)
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS critical_moments (
+        game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+        ply INTEGER NOT NULL,
+        depth INTEGER NOT NULL,
+        polarity TEXT NOT NULL,
+        moment_type TEXT NOT NULL,
+        score REAL NOT NULL,
+        explanation TEXT NOT NULL,
+        PRIMARY KEY(game_id, ply, depth)
+      )
+    ''');
   }
 
   Future<void> close() async {
